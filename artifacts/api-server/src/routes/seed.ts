@@ -1,6 +1,20 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { productsTable, bannersTable, flashDealsTable, platformSettingsTable, usersTable } from "@workspace/db/schema";
+import {
+  productsTable,
+  bannersTable,
+  flashDealsTable,
+  platformSettingsTable,
+  usersTable,
+  rideServiceTypesTable,
+  categoriesTable,
+  permissionsTable,
+  rolesTable,
+  rolePermissionsTable,
+  adminRolePresetsTable,
+  serviceZonesTable,
+  weatherConfigTable,
+} from "@workspace/db/schema";
 import { eq, sql, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { adminAuth } from "./admin.js";
@@ -331,6 +345,314 @@ router.post("/products", async (req, res) => {
     seeded: { mart: seededMart, food: seededFood, banners: seededBanners, deals: seededDeals, paymentSettings: seededPayments },
     message: `Seeded: ${seededMart} mart, ${seededFood} food, ${seededBanners} banners, ${seededDeals} deals, ${seededPayments} payment settings`,
   });
+});
+
+// ─── RIDE SERVICE TYPES ───────────────────────────────────────────────────────
+const RIDE_SERVICE_TYPES = [
+  {
+    id: "rst_bike",
+    key: "bike",
+    name: "Bike",
+    nameUrdu: "موٹر سائیکل",
+    icon: "🏍️",
+    description: "Affordable motorcycle rides for quick trips",
+    color: "#059669",
+    baseFare: "50",
+    perKm: "20",
+    minFare: "60",
+    maxPassengers: 1,
+    allowBargaining: true,
+    sortOrder: 1,
+    isEnabled: true,
+    isCustom: false,
+  },
+  {
+    id: "rst_car",
+    key: "car",
+    name: "Car",
+    nameUrdu: "کار",
+    icon: "🚗",
+    description: "Comfortable sedan car rides",
+    color: "#2563EB",
+    baseFare: "120",
+    perKm: "45",
+    minFare: "150",
+    maxPassengers: 4,
+    allowBargaining: true,
+    sortOrder: 2,
+    isEnabled: true,
+    isCustom: false,
+  },
+  {
+    id: "rst_rickshaw",
+    key: "rickshaw",
+    name: "Rickshaw",
+    nameUrdu: "رکشہ",
+    icon: "🛺",
+    description: "Traditional auto rickshaw for short local trips",
+    color: "#D97706",
+    baseFare: "60",
+    perKm: "25",
+    minFare: "80",
+    maxPassengers: 3,
+    allowBargaining: true,
+    sortOrder: 3,
+    isEnabled: true,
+    isCustom: false,
+  },
+];
+
+async function seedRideServiceTypes(): Promise<{ inserted: number; skipped: number }> {
+  let inserted = 0;
+  let skipped = 0;
+  for (const rst of RIDE_SERVICE_TYPES) {
+    const result = await db.insert(rideServiceTypesTable)
+      .values(rst)
+      .onConflictDoNothing()
+      .returning({ id: rideServiceTypesTable.id });
+    if (result.length > 0) inserted++;
+    else skipped++;
+  }
+  return { inserted, skipped };
+}
+
+// ─── PRODUCT CATEGORIES ───────────────────────────────────────────────────────
+const PRODUCT_CATEGORIES = [
+  { id: "cat_groceries",    name: "Groceries",           icon: "basket-outline",    type: "mart",     sortOrder: 1 },
+  { id: "cat_dairy",       name: "Dairy & Eggs",         icon: "egg-outline",       type: "mart",     sortOrder: 2 },
+  { id: "cat_meat",        name: "Meat & Fish",          icon: "nutrition-outline", type: "mart",     sortOrder: 3 },
+  { id: "cat_bakery",      name: "Bakery & Bread",       icon: "cafe-outline",      type: "mart",     sortOrder: 4 },
+  { id: "cat_fruits",      name: "Fruits & Vegetables",  icon: "leaf-outline",      type: "mart",     sortOrder: 5 },
+  { id: "cat_beverages",   name: "Beverages",            icon: "water-outline",     type: "mart",     sortOrder: 6 },
+  { id: "cat_snacks",      name: "Snacks & Biscuits",    icon: "fast-food-outline", type: "mart",     sortOrder: 7 },
+  { id: "cat_household",   name: "Household & Cleaning", icon: "home-outline",      type: "mart",     sortOrder: 8 },
+  { id: "cat_personal",    name: "Personal Care",        icon: "person-outline",    type: "mart",     sortOrder: 9 },
+  { id: "cat_general",     name: "General",              icon: "grid-outline",      type: "mart",     sortOrder: 10 },
+  { id: "cat_food_desi",   name: "Desi Food",            icon: "restaurant-outline",type: "food",     sortOrder: 1 },
+  { id: "cat_food_fast",   name: "Fast Food",            icon: "fast-food-outline", type: "food",     sortOrder: 2 },
+  { id: "cat_food_pizza",  name: "Pizza",                icon: "pizza-outline",     type: "food",     sortOrder: 3 },
+  { id: "cat_food_chinese",name: "Chinese",              icon: "flame-outline",     type: "food",     sortOrder: 4 },
+  { id: "cat_food_dessert",name: "Desserts & Sweets",    icon: "ice-cream-outline", type: "food",     sortOrder: 5 },
+  { id: "cat_food_bev",    name: "Drinks & Juices",      icon: "wine-outline",      type: "food",     sortOrder: 6 },
+  { id: "cat_pharma_otc",  name: "OTC Medicines",        icon: "medkit-outline",    type: "pharmacy", sortOrder: 1 },
+  { id: "cat_pharma_rx",   name: "Prescription Drugs",   icon: "document-outline",  type: "pharmacy", sortOrder: 2 },
+  { id: "cat_pharma_baby", name: "Baby & Mother",        icon: "heart-outline",     type: "pharmacy", sortOrder: 3 },
+  { id: "cat_pharma_vit",  name: "Vitamins & Supplements",icon: "fitness-outline",  type: "pharmacy", sortOrder: 4 },
+  { id: "cat_pharma_skin", name: "Skin & Beauty",        icon: "sparkles-outline",  type: "pharmacy", sortOrder: 5 },
+];
+
+async function seedCategories(): Promise<{ inserted: number; skipped: number }> {
+  let inserted = 0;
+  let skipped = 0;
+  for (const cat of PRODUCT_CATEGORIES) {
+    const result = await db.insert(categoriesTable)
+      .values({ ...cat, isActive: true })
+      .onConflictDoNothing()
+      .returning({ id: categoriesTable.id });
+    if (result.length > 0) inserted++;
+    else skipped++;
+  }
+  return { inserted, skipped };
+}
+
+// ─── RBAC PERMISSIONS & ROLES ─────────────────────────────────────────────────
+const RBAC_PERMISSIONS = [
+  { id: "orders.view",       label: "View Orders",              category: "Orders" },
+  { id: "orders.update",     label: "Update Order Status",      category: "Orders" },
+  { id: "orders.refund",     label: "Issue Refunds",            category: "Orders" },
+  { id: "orders.delete",     label: "Delete Orders",            category: "Orders" },
+  { id: "users.view",        label: "View Customers",           category: "Users" },
+  { id: "users.update",      label: "Edit Customer Profiles",   category: "Users" },
+  { id: "users.ban",         label: "Ban / Suspend Users",      category: "Users" },
+  { id: "users.delete",      label: "Delete Users",             category: "Users" },
+  { id: "products.view",     label: "View Products",            category: "Products" },
+  { id: "products.create",   label: "Create Products",          category: "Products" },
+  { id: "products.update",   label: "Edit Products",            category: "Products" },
+  { id: "products.delete",   label: "Delete Products",          category: "Products" },
+  { id: "rides.view",        label: "View Rides",               category: "Rides" },
+  { id: "rides.update",      label: "Update Ride Status",       category: "Rides" },
+  { id: "rides.dispatch",    label: "Dispatch Rides Manually",  category: "Rides" },
+  { id: "vendors.view",      label: "View Vendors",             category: "Vendors" },
+  { id: "vendors.approve",   label: "Approve / Reject Vendors", category: "Vendors" },
+  { id: "vendors.update",    label: "Edit Vendor Profiles",     category: "Vendors" },
+  { id: "riders.view",       label: "View Riders",              category: "Riders" },
+  { id: "riders.approve",    label: "Approve / Reject Riders",  category: "Riders" },
+  { id: "riders.update",     label: "Edit Rider Profiles",      category: "Riders" },
+  { id: "finance.view",      label: "View Financials",          category: "Finance" },
+  { id: "finance.wallets",   label: "Manage Wallets",           category: "Finance" },
+  { id: "finance.kyc",       label: "Review KYC Submissions",   category: "Finance" },
+  { id: "admin.view",        label: "View Admin Accounts",      category: "Admin" },
+  { id: "admin.create",      label: "Create Admin Accounts",    category: "Admin" },
+  { id: "admin.update",      label: "Edit Admin Accounts",      category: "Admin" },
+  { id: "admin.delete",      label: "Delete Admin Accounts",    category: "Admin" },
+  { id: "settings.view",     label: "View Platform Settings",   category: "Settings" },
+  { id: "settings.update",   label: "Update Platform Settings", category: "Settings" },
+  { id: "analytics.view",    label: "View Analytics",           category: "Analytics" },
+  { id: "support.view",      label: "View Support Tickets",     category: "Support" },
+  { id: "support.respond",   label: "Respond to Support",       category: "Support" },
+  { id: "reports.view",      label: "View Error Reports",       category: "Reports" },
+  { id: "reports.resolve",   label: "Resolve Error Reports",    category: "Reports" },
+];
+
+const SUPER_ADMIN_ROLE_ID = "role_super_admin";
+const SUPER_ADMIN_PRESET_ID = "preset_super_admin";
+
+async function seedRbac(): Promise<{ permissionsInserted: number; permissionsSkipped: number; roleInserted: boolean; presetInserted: boolean }> {
+  let permissionsInserted = 0;
+  let permissionsSkipped = 0;
+
+  for (const perm of RBAC_PERMISSIONS) {
+    const result = await db.insert(permissionsTable)
+      .values(perm)
+      .onConflictDoNothing()
+      .returning({ id: permissionsTable.id });
+    if (result.length > 0) permissionsInserted++;
+    else permissionsSkipped++;
+  }
+
+  const roleResult = await db.insert(rolesTable)
+    .values({
+      id: SUPER_ADMIN_ROLE_ID,
+      slug: "super_admin",
+      name: "Super Admin",
+      description: "Full access to all platform features",
+      isBuiltIn: true,
+    })
+    .onConflictDoNothing()
+    .returning({ id: rolesTable.id });
+  const roleInserted = roleResult.length > 0;
+
+  for (const perm of RBAC_PERMISSIONS) {
+    await db.insert(rolePermissionsTable)
+      .values({ roleId: SUPER_ADMIN_ROLE_ID, permissionId: perm.id })
+      .onConflictDoNothing();
+  }
+
+  const allPermIds = RBAC_PERMISSIONS.map(p => p.id);
+  const presetResult = await db.insert(adminRolePresetsTable)
+    .values({
+      id: SUPER_ADMIN_PRESET_ID,
+      name: "Super Admin",
+      slug: "super_admin",
+      description: "Full access to all platform features and settings",
+      permissionsJson: JSON.stringify(allPermIds),
+      role: "superadmin",
+      isBuiltIn: true,
+    })
+    .onConflictDoNothing()
+    .returning({ id: adminRolePresetsTable.id });
+  const presetInserted = presetResult.length > 0;
+
+  return { permissionsInserted, permissionsSkipped, roleInserted, presetInserted };
+}
+
+// ─── SERVICE ZONES ────────────────────────────────────────────────────────────
+const SERVICE_ZONES_DATA = [
+  { name: "Muzaffarabad City",     city: "Muzaffarabad", lat: "34.370100", lng: "73.471100", radiusKm: "30", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "AJK capital and primary service zone" },
+  { name: "Mirpur City",          city: "Mirpur",        lat: "33.141300", lng: "73.750400", radiusKm: "25", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "Mirpur district coverage" },
+  { name: "Rawalakot Area",       city: "Rawalakot",     lat: "33.857900", lng: "73.761900", radiusKm: "20", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "Poonch district coverage" },
+  { name: "Bagh District",        city: "Bagh",          lat: "33.993600", lng: "73.774000", radiusKm: "20", appliesToRides: false, appliesToOrders: true,  appliesToParcel: true,  notes: "Bagh district parcel and order coverage" },
+];
+
+async function seedServiceZones(): Promise<{ inserted: number; skipped: number }> {
+  let inserted = 0;
+  let skipped = 0;
+  for (const zone of SERVICE_ZONES_DATA) {
+    const existing = await db.select({ id: serviceZonesTable.id })
+      .from(serviceZonesTable)
+      .where(eq(serviceZonesTable.name, zone.name))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(serviceZonesTable).values({ ...zone, isActive: true });
+      inserted++;
+    } else {
+      skipped++;
+    }
+  }
+  return { inserted, skipped };
+}
+
+// ─── WEATHER CONFIG ───────────────────────────────────────────────────────────
+async function seedWeatherConfig(): Promise<{ inserted: boolean }> {
+  const result = await db.insert(weatherConfigTable)
+    .values({
+      id: "default",
+      widgetEnabled: true,
+      cities: "Muzaffarabad,Rawalakot,Mirpur,Bagh,Kotli,Neelum",
+    })
+    .onConflictDoNothing()
+    .returning({ id: weatherConfigTable.id });
+  return { inserted: result.length > 0 };
+}
+
+// ─── FULL SEED ENDPOINT ───────────────────────────────────────────────────────
+router.post("/full", async (req, res) => {
+  try {
+    await ensureSystemVendor();
+
+    const [rideTypes, categories, rbac, zones, weather] = await Promise.all([
+      seedRideServiceTypes(),
+      seedCategories(),
+      seedRbac(),
+      seedServiceZones(),
+      seedWeatherConfig(),
+    ]);
+
+    const PAYMENT_DEFAULTS: Array<{ key: string; value: string; label: string; category: string }> = [
+      { key: "jazzcash_enabled",             value: "on",                                                                             label: "JazzCash Enabled",             category: "payments" },
+      { key: "jazzcash_type",                value: "manual",                                                                         label: "JazzCash Type",                category: "payments" },
+      { key: "jazzcash_manual_name",         value: "AJKMart Payments",                                                               label: "JazzCash Account Name",        category: "payments" },
+      { key: "jazzcash_manual_number",       value: "0300-0000000",                                                                   label: "JazzCash Number",              category: "payments" },
+      { key: "jazzcash_manual_instructions", value: "JazzCash number par payment karein aur transaction ID hamein share karein.",     label: "JazzCash Instructions",        category: "payments" },
+      { key: "easypaisa_enabled",            value: "on",                                                                             label: "EasyPaisa Enabled",            category: "payments" },
+      { key: "easypaisa_type",               value: "manual",                                                                         label: "EasyPaisa Type",               category: "payments" },
+      { key: "easypaisa_manual_name",        value: "AJKMart Payments",                                                               label: "EasyPaisa Account Name",       category: "payments" },
+      { key: "easypaisa_manual_number",      value: "0300-0000000",                                                                   label: "EasyPaisa Number",             category: "payments" },
+      { key: "easypaisa_manual_instructions",value: "EasyPaisa number par payment karein aur transaction ID hamein share karein.",    label: "EasyPaisa Instructions",       category: "payments" },
+      { key: "bank_enabled",                 value: "on",                                                                             label: "Bank Transfer Enabled",        category: "payments" },
+      { key: "bank_account_title",           value: "AJKMart Operations",                                                             label: "Bank Account Title",           category: "payments" },
+      { key: "bank_account_number",          value: "PK00 MEEZ 0000 0000 0000 0000",                                                  label: "Bank Account Number",          category: "payments" },
+      { key: "bank_name",                    value: "Meezan Bank",                                                                    label: "Bank Name",                    category: "payments" },
+      { key: "bank_instructions",            value: "Bank account mein transfer karein aur receipt hum se share karein.",             label: "Bank Instructions",            category: "payments" },
+    ];
+    let paymentSettings = 0;
+    for (const s of PAYMENT_DEFAULTS) {
+      await db.insert(platformSettingsTable)
+        .values({ key: s.key, value: s.value, label: s.label, category: s.category })
+        .onConflictDoNothing();
+      paymentSettings++;
+    }
+
+    res.json({
+      success: true,
+      seeded: {
+        rideServiceTypes: rideTypes,
+        categories,
+        rbac: {
+          permissionsInserted: rbac.permissionsInserted,
+          permissionsSkipped: rbac.permissionsSkipped,
+          roleInserted: rbac.roleInserted,
+          presetInserted: rbac.presetInserted,
+        },
+        serviceZones: zones,
+        weatherConfig: weather,
+        paymentSettings,
+      },
+      message: [
+        `Ride types: ${rideTypes.inserted} inserted, ${rideTypes.skipped} skipped`,
+        `Categories: ${categories.inserted} inserted, ${categories.skipped} skipped`,
+        `RBAC permissions: ${rbac.permissionsInserted} inserted, ${rbac.permissionsSkipped} skipped`,
+        `RBAC role "Super Admin": ${rbac.roleInserted ? "inserted" : "already exists"}`,
+        `Admin role preset: ${rbac.presetInserted ? "inserted" : "already exists"}`,
+        `Service zones: ${zones.inserted} inserted, ${zones.skipped} skipped`,
+        `Weather config: ${weather.inserted ? "inserted" : "already exists"}`,
+        `Payment settings: ${paymentSettings} upserted`,
+      ].join(" | "),
+    });
+  } catch (err) {
+    console.error("[seed:full]", err);
+    res.status(500).json({ success: false, error: String(err) });
+  }
 });
 
 export default router;
