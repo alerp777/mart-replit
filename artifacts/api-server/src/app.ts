@@ -7,6 +7,9 @@ import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { runSqlMigrations } from "./services/sqlMigrationRunner.js";
+import { db } from "@workspace/db";
+import { platformSettingsTable } from "@workspace/db/schema";
+import { DEFAULT_PLATFORM_SETTINGS } from "./routes/admin-shared.js";
 import {
   seedPermissionCatalog,
   seedDefaultRoles,
@@ -116,6 +119,17 @@ export async function runStartupTasks(): Promise<void> {
     console.log("[startup] error-monitor supplementary tables ready");
   } catch (err) {
     console.error("[startup] error-monitor table migration failed (continuing):", err);
+  }
+  // Upsert default platform settings so every section in the Admin
+  // App Settings page shows live data immediately — without overwriting
+  // any admin-edited values (INSERT … ON CONFLICT DO NOTHING).
+  try {
+    if (DEFAULT_PLATFORM_SETTINGS.length > 0) {
+      await db.insert(platformSettingsTable).values(DEFAULT_PLATFORM_SETTINGS).onConflictDoNothing();
+      console.log(`[startup] platform settings defaults ensured (${DEFAULT_PLATFORM_SETTINGS.length} entries)`);
+    }
+  } catch (err) {
+    console.error("[startup] platform settings seed failed (continuing):", err);
   }
 }
 

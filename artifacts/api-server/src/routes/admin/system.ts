@@ -22,7 +22,7 @@ import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNot
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, invalidatePlatformSettingsCache, adminAuth, getAdminSecret,
-  sendUserNotification, logger, DEFAULT_PLATFORM_SETTINGS,
+  sendUserNotification, logger,
   ORDER_NOTIF_KEYS, RIDE_NOTIF_KEYS, PHARMACY_NOTIF_KEYS, PARCEL_NOTIF_KEYS,
   checkAdminLoginLockout, recordAdminLoginFailure, resetAdminLoginAttempts,
   addAuditEntry, addSecurityEvent, getClientIp,
@@ -118,10 +118,6 @@ router.get("/stats", async (_req, res) => {
 });
 
 router.get("/platform-settings", async (_req, res) => {
-  // FIXED: values() empty array crash - Added guard clause 2026-04-22
-  if (DEFAULT_PLATFORM_SETTINGS.length > 0) {
-    await db.insert(platformSettingsTable).values(DEFAULT_PLATFORM_SETTINGS).onConflictDoNothing();
-  }
   const rows = await db.select().from(platformSettingsTable);
   const grouped: Record<string, any[]> = {};
   for (const row of rows) {
