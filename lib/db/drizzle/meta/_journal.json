@@ -8,6 +8,13 @@
       "when": 1777965587755,
       "tag": "0000_brief_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778017837370,
+      "tag": "0001_tan_prima",
+      "breakpoints": true
     }
   ]
 }

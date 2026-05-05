@@ -584,19 +584,12 @@ async function seedServiceZones(): Promise<{ inserted: number; skipped: number }
   let inserted = 0;
   let skipped = 0;
   for (const zone of SERVICE_ZONES_DATA) {
-    // WHERE NOT EXISTS is fully conflict-safe under concurrency without
-    // requiring a unique constraint on `name`.
-    const result = await db.execute(sql`
-      INSERT INTO service_zones (name, city, lat, lng, radius_km, applies_to_rides, applies_to_orders, applies_to_parcel, notes, is_active)
-      SELECT ${zone.name}, ${zone.city}, ${zone.lat}, ${zone.lng}, ${zone.radiusKm},
-             ${zone.appliesToRides}, ${zone.appliesToOrders}, ${zone.appliesToParcel},
-             ${zone.notes}, true
-      WHERE NOT EXISTS (
-        SELECT 1 FROM service_zones WHERE name = ${zone.name}
-      )
-    `);
-    const rowCount = (result as unknown as { rowCount: number }).rowCount ?? 0;
-    if (rowCount > 0) inserted++;
+    // service_zones_name_uq unique index guarantees conflict-safe idempotency.
+    const result = await db.insert(serviceZonesTable)
+      .values({ ...zone, isActive: true })
+      .onConflictDoNothing({ target: serviceZonesTable.name })
+      .returning({ id: serviceZonesTable.id });
+    if (result.length > 0) inserted++;
     else skipped++;
   }
   return { inserted, skipped };

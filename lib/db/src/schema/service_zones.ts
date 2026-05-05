@@ -1,4 +1,4 @@
-import { boolean, index, numeric, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, numeric, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +17,7 @@ export const serviceZonesTable = pgTable("service_zones", {
   createdAt:      timestamp("created_at").notNull().defaultNow(),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
+  uniqueIndex("service_zones_name_uq").on(t.name),
   index("service_zones_is_active_idx").on(t.isActive),
   index("service_zones_city_idx").on(t.city),
 ]);

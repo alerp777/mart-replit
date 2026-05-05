@@ -1,7 +1,6 @@
 /**
- * Migration wrapper — runs drizzle-kit migrate against the DATABASE_URL.
- * Handles the case where the schema was already applied via `drizzle-kit push`
- * (idempotent — exits 0 if all types/tables already exist).
+ * Migration wrapper — runs drizzle-kit migrate via the @workspace/db package.
+ * Handles the case where the schema was already applied (idempotent — exits 0).
  *
  * Usage (from workspace root):
  *   pnpm db:migrate
@@ -11,17 +10,13 @@ import { fileURLToPath } from "url";
 import path from "path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_DIR = path.resolve(__dirname, "../lib/db");
-const BIN =
-  path.resolve(__dirname, "../lib/db/node_modules/.bin/drizzle-kit");
 
 console.log("[db:migrate] Running Drizzle migrations…");
-console.log(`[db:migrate] DB dir: ${DB_DIR}`);
 
 try {
   const result = execSync(
-    `"${BIN}" migrate --config ./drizzle.config.ts`,
-    { cwd: DB_DIR, stdio: "pipe", encoding: "utf8" }
+    "pnpm --filter @workspace/db migrate",
+    { cwd: path.resolve(__dirname, ".."), stdio: "pipe", encoding: "utf8" }
   );
   console.log("[db:migrate] ✅ Migrations applied successfully:");
   console.log(result);
