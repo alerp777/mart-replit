@@ -41,7 +41,16 @@ async function ensureSystemVendor(): Promise<void> {
 
 const router: IRouter = Router();
 
-router.use(adminAuth);
+const DEV_SEED_KEY = process.env.DEV_SEED_KEY ?? "local-dev-seed";
+const isDev = process.env.NODE_ENV !== "production";
+
+function devSeedAuth(req: any, res: any, next: any): void {
+  if (isDev && req.headers["x-admin-seed-key"] === DEV_SEED_KEY) {
+    return next();
+  }
+  adminAuth(req, res, next);
+}
+
 
 const MART_PRODUCTS = [
   { name: "Basmati Rice 5kg",        price: 980,  originalPrice: 1200, category: "fruits",    unit: "5kg bag",    inStock: true,  description: "Premium long-grain basmati rice from AJK farms", image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&h=400&fit=crop&auto=format" },
@@ -166,7 +175,7 @@ const DEMO_BANNERS = [
   { title: "Ride & Save", subtitle: "Book rides at lowest fares", colorFrom: "#38A169", colorTo: "#68D391", icon: "car", placement: "home", sortOrder: 4, linkType: "service", linkValue: "ride", targetService: "ride" },
 ];
 
-router.post("/products", async (req, res) => {
+router.post("/products", adminAuth, async (req, res) => {
   await ensureSystemVendor();
   const existingMart = await db.select().from(productsTable).where(eq(productsTable.type, "mart")).limit(1);
   const existingFood = await db.select().from(productsTable).where(eq(productsTable.type, "food")).limit(1);
@@ -418,16 +427,18 @@ async function seedRideServiceTypes(): Promise<{ inserted: number; skipped: numb
 
 // ─── PRODUCT CATEGORIES ───────────────────────────────────────────────────────
 const PRODUCT_CATEGORIES = [
-  { id: "cat_groceries",    name: "Groceries",           icon: "basket-outline",    type: "mart",     sortOrder: 1 },
-  { id: "cat_dairy",       name: "Dairy & Eggs",         icon: "egg-outline",       type: "mart",     sortOrder: 2 },
-  { id: "cat_meat",        name: "Meat & Fish",          icon: "nutrition-outline", type: "mart",     sortOrder: 3 },
-  { id: "cat_bakery",      name: "Bakery & Bread",       icon: "cafe-outline",      type: "mart",     sortOrder: 4 },
-  { id: "cat_fruits",      name: "Fruits & Vegetables",  icon: "leaf-outline",      type: "mart",     sortOrder: 5 },
-  { id: "cat_beverages",   name: "Beverages",            icon: "water-outline",     type: "mart",     sortOrder: 6 },
-  { id: "cat_snacks",      name: "Snacks & Biscuits",    icon: "fast-food-outline", type: "mart",     sortOrder: 7 },
-  { id: "cat_household",   name: "Household & Cleaning", icon: "home-outline",      type: "mart",     sortOrder: 8 },
-  { id: "cat_personal",    name: "Personal Care",        icon: "person-outline",    type: "mart",     sortOrder: 9 },
-  { id: "cat_general",     name: "General",              icon: "grid-outline",      type: "mart",     sortOrder: 10 },
+  { id: "cat_groceries",    name: "Groceries",           icon: "basket-outline",     type: "mart",     sortOrder: 1 },
+  { id: "cat_dairy",       name: "Dairy & Eggs",         icon: "egg-outline",        type: "mart",     sortOrder: 2 },
+  { id: "cat_meat",        name: "Meat & Fish",          icon: "nutrition-outline",  type: "mart",     sortOrder: 3 },
+  { id: "cat_bakery",      name: "Bakery & Bread",       icon: "cafe-outline",       type: "mart",     sortOrder: 4 },
+  { id: "cat_fruits",      name: "Fruits & Vegetables",  icon: "leaf-outline",       type: "mart",     sortOrder: 5 },
+  { id: "cat_beverages",   name: "Beverages",            icon: "water-outline",      type: "mart",     sortOrder: 6 },
+  { id: "cat_snacks",      name: "Snacks & Biscuits",    icon: "fast-food-outline",  type: "mart",     sortOrder: 7 },
+  { id: "cat_household",   name: "Household & Cleaning", icon: "home-outline",       type: "mart",     sortOrder: 8 },
+  { id: "cat_personal",    name: "Personal Care",        icon: "person-outline",     type: "mart",     sortOrder: 9 },
+  { id: "cat_electronics", name: "Electronics",          icon: "phone-portrait-outline", type: "mart", sortOrder: 10 },
+  { id: "cat_clothing",    name: "Clothing & Fashion",   icon: "shirt-outline",      type: "mart",     sortOrder: 11 },
+  { id: "cat_general",     name: "General",              icon: "grid-outline",       type: "mart",     sortOrder: 12 },
   { id: "cat_food_desi",   name: "Desi Food",            icon: "restaurant-outline",type: "food",     sortOrder: 1 },
   { id: "cat_food_fast",   name: "Fast Food",            icon: "fast-food-outline", type: "food",     sortOrder: 2 },
   { id: "cat_food_pizza",  name: "Pizza",                icon: "pizza-outline",     type: "food",     sortOrder: 3 },
@@ -548,10 +559,10 @@ async function seedRbac(): Promise<{ permissionsInserted: number; permissionsSki
 
 // ─── SERVICE ZONES ────────────────────────────────────────────────────────────
 const SERVICE_ZONES_DATA = [
-  { name: "Muzaffarabad City",     city: "Muzaffarabad", lat: "34.370100", lng: "73.471100", radiusKm: "30", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "AJK capital and primary service zone" },
-  { name: "Mirpur City",          city: "Mirpur",        lat: "33.141300", lng: "73.750400", radiusKm: "25", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "Mirpur district coverage" },
-  { name: "Rawalakot Area",       city: "Rawalakot",     lat: "33.857900", lng: "73.761900", radiusKm: "20", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "Poonch district coverage" },
-  { name: "Bagh District",        city: "Bagh",          lat: "33.993600", lng: "73.774000", radiusKm: "20", appliesToRides: false, appliesToOrders: true,  appliesToParcel: true,  notes: "Bagh district parcel and order coverage" },
+  { name: "Muzaffarabad City",  city: "Muzaffarabad", lat: "34.370100", lng: "73.471100", radiusKm: "50", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "AJK capital and primary service zone" },
+  { name: "Mirpur City",        city: "Mirpur",       lat: "33.141300", lng: "73.750400", radiusKm: "25", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "Mirpur district coverage" },
+  { name: "Rawalakot Area",     city: "Rawalakot",    lat: "33.857900", lng: "73.761900", radiusKm: "20", appliesToRides: true,  appliesToOrders: true,  appliesToParcel: true,  notes: "Poonch district coverage" },
+  { name: "Bagh District",      city: "Bagh",         lat: "33.993600", lng: "73.774000", radiusKm: "20", appliesToRides: false, appliesToOrders: true,  appliesToParcel: true,  notes: "Bagh district parcel and order coverage" },
 ];
 
 async function seedServiceZones(): Promise<{ inserted: number; skipped: number }> {
@@ -586,7 +597,7 @@ async function seedWeatherConfig(): Promise<{ inserted: boolean }> {
 }
 
 // ─── FULL SEED ENDPOINT ───────────────────────────────────────────────────────
-router.post("/full", async (req, res) => {
+router.post("/full", devSeedAuth, async (req, res) => {
   try {
     await ensureSystemVendor();
 
@@ -615,12 +626,15 @@ router.post("/full", async (req, res) => {
       { key: "bank_name",                    value: "Meezan Bank",                                                                    label: "Bank Name",                    category: "payments" },
       { key: "bank_instructions",            value: "Bank account mein transfer karein aur receipt hum se share karein.",             label: "Bank Instructions",            category: "payments" },
     ];
-    let paymentSettings = 0;
+    let paymentInserted = 0;
+    let paymentSkipped = 0;
     for (const s of PAYMENT_DEFAULTS) {
-      await db.insert(platformSettingsTable)
+      const result = await db.insert(platformSettingsTable)
         .values({ key: s.key, value: s.value, label: s.label, category: s.category })
-        .onConflictDoNothing();
-      paymentSettings++;
+        .onConflictDoNothing()
+        .returning({ key: platformSettingsTable.key });
+      if (result.length > 0) paymentInserted++;
+      else paymentSkipped++;
     }
 
     res.json({
@@ -636,7 +650,7 @@ router.post("/full", async (req, res) => {
         },
         serviceZones: zones,
         weatherConfig: weather,
-        paymentSettings,
+        paymentSettings: { inserted: paymentInserted, skipped: paymentSkipped },
       },
       message: [
         `Ride types: ${rideTypes.inserted} inserted, ${rideTypes.skipped} skipped`,
@@ -646,7 +660,7 @@ router.post("/full", async (req, res) => {
         `Admin role preset: ${rbac.presetInserted ? "inserted" : "already exists"}`,
         `Service zones: ${zones.inserted} inserted, ${zones.skipped} skipped`,
         `Weather config: ${weather.inserted ? "inserted" : "already exists"}`,
-        `Payment settings: ${paymentSettings} upserted`,
+        `Payment settings: ${paymentInserted} inserted, ${paymentSkipped} skipped`,
       ].join(" | "),
     });
   } catch (err) {
