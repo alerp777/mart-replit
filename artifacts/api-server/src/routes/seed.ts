@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import {
   productsTable,
@@ -41,11 +41,26 @@ async function ensureSystemVendor(): Promise<void> {
 
 const router: IRouter = Router();
 
-const DEV_SEED_KEY = process.env.DEV_SEED_KEY ?? "local-dev-seed";
-const isDev = process.env.NODE_ENV !== "production";
+/**
+ * Dev-only seed bypass.
+ * Active only when BOTH conditions are true:
+ *   1. ALLOW_DEV_SEED=true is explicitly set in the environment.
+ *   2. DEV_SEED_KEY is explicitly set to a non-empty value AND the request
+ *      presents that same key in the x-admin-seed-key header.
+ *
+ * Falls back to normal adminAuth for any mismatch or when not in dev mode.
+ * This two-factor gate prevents accidental exposure in mis-configured deploys.
+ */
+function devSeedAuth(req: Request, res: Response, next: NextFunction): void {
+  const allowDevSeed = process.env.ALLOW_DEV_SEED === "true";
+  const configuredKey = process.env.DEV_SEED_KEY ?? "";
+  const presentedKey  = req.headers["x-admin-seed-key"] as string | undefined;
 
-function devSeedAuth(req: any, res: any, next: any): void {
-  if (isDev && req.headers["x-admin-seed-key"] === DEV_SEED_KEY) {
+  if (
+    allowDevSeed &&
+    configuredKey.length > 0 &&
+    presentedKey === configuredKey
+  ) {
     return next();
   }
   adminAuth(req, res, next);
@@ -569,16 +584,20 @@ async function seedServiceZones(): Promise<{ inserted: number; skipped: number }
   let inserted = 0;
   let skipped = 0;
   for (const zone of SERVICE_ZONES_DATA) {
-    const existing = await db.select({ id: serviceZonesTable.id })
-      .from(serviceZonesTable)
-      .where(eq(serviceZonesTable.name, zone.name))
-      .limit(1);
-    if (existing.length === 0) {
-      await db.insert(serviceZonesTable).values({ ...zone, isActive: true });
-      inserted++;
-    } else {
-      skipped++;
-    }
+    // WHERE NOT EXISTS is fully conflict-safe under concurrency without
+    // requiring a unique constraint on `name`.
+    const result = await db.execute(sql`
+      INSERT INTO service_zones (name, city, lat, lng, radius_km, applies_to_rides, applies_to_orders, applies_to_parcel, notes, is_active)
+      SELECT ${zone.name}, ${zone.city}, ${zone.lat}, ${zone.lng}, ${zone.radiusKm},
+             ${zone.appliesToRides}, ${zone.appliesToOrders}, ${zone.appliesToParcel},
+             ${zone.notes}, true
+      WHERE NOT EXISTS (
+        SELECT 1 FROM service_zones WHERE name = ${zone.name}
+      )
+    `);
+    const rowCount = (result as unknown as { rowCount: number }).rowCount ?? 0;
+    if (rowCount > 0) inserted++;
+    else skipped++;
   }
   return { inserted, skipped };
 }

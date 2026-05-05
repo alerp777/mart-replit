@@ -137,6 +137,8 @@ ADMIN_JWT_SECRET = "0bf96d92374ef22e78a01b29ee69c0356a06e30e3e194c75fa2458704d29
 
 [userenv.development]
 VITE_API_PROXY_TARGET = "http://127.0.0.1:5000"
+ALLOW_DEV_SEED = "true"
+DEV_SEED_KEY = "local-dev-seed-ajkmart"
 
 [rules]
 
