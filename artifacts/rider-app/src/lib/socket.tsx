@@ -136,7 +136,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     s.off("connect", emitHeartbeat);
     s.on("connect", emitHeartbeat);
     emitHeartbeat();
-    const heartbeatInterval = setInterval(emitHeartbeat, 30_000);
+    const heartbeatInterval = setInterval(emitHeartbeat, 10_000);
 
     return () => {
       clearInterval(heartbeatInterval);

@@ -501,6 +501,20 @@ export function getActiveServices(
     .map((k) => applyContentOverrides(registry[k], content));
 }
 
+export type ServiceDefinitionWithState = ServiceDefinition & { isEnabled: boolean };
+
+export function getAllServices(
+  features: Record<string, boolean>,
+  branding?: BrandingOverrides,
+  content?: ContentOverrides,
+): ServiceDefinitionWithState[] {
+  const registry = applyBrandingToRegistry(branding);
+  return SERVICE_KEYS.map((k) => ({
+    ...applyContentOverrides(registry[k], content),
+    isEnabled: !!features[k],
+  }));
+}
+
 export function getActiveBanners(
   features: Record<string, boolean>,
   branding?: BrandingOverrides,

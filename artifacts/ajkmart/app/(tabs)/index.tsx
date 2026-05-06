@@ -32,7 +32,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { usePerformance } from "@/context/PerformanceContext";
 import { tDual } from "@workspace/i18n";
-import { getActiveServices } from "@/constants/serviceRegistry";
+import { getAllServices } from "@/constants/serviceRegistry";
 import {
   SkeletonBlock,
   EmptyState,
@@ -477,8 +477,8 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const activeServices = getActiveServices(features, platformConfig.branding, platformConfig.serviceContent);
-  const noServicesActive = activeServices.length === 0;
+  const allServices = getAllServices(features, platformConfig.branding, platformConfig.serviceContent);
+  const noServicesActive = allServices.length === 0;
 
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [locationInput, setLocationInput] = useState("");
@@ -598,7 +598,7 @@ export default function HomeScreen() {
             <ErrorBoundary>
               <Suspense fallback={<SkeletonBlock w="100%" h={120} r={16} style={{ marginHorizontal: H_PAD }} />}>
                 <LazyServiceSection
-                  services={activeServices}
+                  services={allServices}
                   isGuest={isGuest}
                 />
               </Suspense>

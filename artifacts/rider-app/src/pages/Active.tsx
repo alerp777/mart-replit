@@ -393,7 +393,8 @@ function SosButton({ rideId, riderPos, T, showToast }: { rideId?: string | null;
         setLoading(false);
       }}
       disabled={sent || loading || noLocWarning}
-      className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all ${sent ? "bg-gray-200 text-gray-500 cursor-default" : "bg-red-600 text-white hover:bg-red-700 active:scale-[0.98]"}`}
+      className={`flex items-center justify-center gap-2 self-end px-5 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg ${sent ? "bg-gray-200 text-gray-500 cursor-default shadow-none" : "text-white active:scale-[0.96] shadow-red-400/40"}`}
+      style={sent ? undefined : { backgroundColor: "#FF2D2D", boxShadow: "0 4px 14px rgba(255,45,45,0.45)" }}
     >
       <AlertTriangle size={15} />
       {loading ? T("sending") : sent ? T("sosSent") : T("sosEmergency")}
@@ -1886,8 +1887,10 @@ export default function Active() {
                 </MapErrorBoundary>
               )}
 
-              {config.features?.sos !== false && (
-                <SosButton rideId={ride.id} riderPos={riderPos} T={T} showToast={showToast} />
+              {config.features?.sos !== false && (ride.status === "accepted" || ride.status === "arrived" || ride.status === "in_transit") && (
+                <div className="flex justify-end">
+                  <SosButton rideId={ride.id} riderPos={riderPos} T={T} showToast={showToast} />
+                </div>
               )}
 
               <div className="flex gap-2 pt-1">

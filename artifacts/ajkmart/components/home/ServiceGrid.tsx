@@ -8,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors, { spacing, shadows } from "@/constants/colors";
 import { Font } from "@/constants/typography";
 import { usePerformance } from "@/context/PerformanceContext";
+import { useToast } from "@/context/ToastContext";
 import type { ServiceDefinition } from "@/constants/serviceRegistry";
 
 const C = Colors.light;
@@ -17,13 +18,16 @@ const H_PAD = spacing.lg;
 type ViewMode = "grid" | "list";
 const SVC_VIEW_KEY = "svc_view_mode";
 
+export type ServiceItemProps = ServiceDefinition & { isEnabled?: boolean };
+
 const shortLabel: Record<string, string> = {
   mart: "Mart", food: "Food", rides: "Ride", pharmacy: "Pharma", parcel: "Parcel",
 };
 
-function ServiceGridView({ services }: { services: ServiceDefinition[] }) {
+function ServiceGridView({ services }: { services: ServiceItemProps[] }) {
   const { width: winW } = useWindowDimensions();
   const perf = usePerformance();
+  const { showToast } = useToast();
   const effectiveW = Math.min(winW, Platform.OS === "web" ? 430 : winW);
   const itemW = (effectiveW - H_PAD * 2) / 5;
   return (
@@ -31,25 +35,42 @@ function ServiceGridView({ services }: { services: ServiceDefinition[] }) {
       {services.map((svc) => {
         const label = shortLabel[svc.key] ?? svc.label;
         const href = String(svc.route) as RelativePathString;
+        const disabled = svc.isEnabled === false;
         return (
           <TouchableOpacity
             key={svc.key}
-            activeOpacity={0.7}
-            onPress={() => router.push(href)}
+            activeOpacity={disabled ? 0.6 : 0.7}
+            onPress={() => {
+              if (disabled) {
+                showToast(`${label} — Coming Soon`, "info");
+                return;
+              }
+              router.push(href);
+            }}
             style={[sg.item, { width: itemW }]}
             accessibilityRole="button"
-            accessibilityLabel={label}
+            accessibilityLabel={disabled ? `${label} — Coming Soon` : label}
           >
-            {perf.useGradients ? (
-              <LinearGradient colors={svc.iconGradient} style={sg.circle}>
-                <Ionicons name={svc.iconFocused} size={22} color="#fff" />
-              </LinearGradient>
-            ) : (
-              <View style={[sg.circle, { backgroundColor: svc.iconGradient[0] }]}>
-                <Ionicons name={svc.iconFocused} size={22} color="#fff" />
-              </View>
-            )}
-            <Text style={sg.label} numberOfLines={1}>{label}</Text>
+            <View style={sg.iconWrap}>
+              {perf.useGradients ? (
+                <LinearGradient
+                  colors={disabled ? ["#C8C8C8", "#ADADAD"] as [string, string] : svc.iconGradient as [string, string]}
+                  style={[sg.circle, disabled && sg.circleDisabled]}
+                >
+                  <Ionicons name={svc.iconFocused} size={22} color={disabled ? "#888" : "#fff"} />
+                </LinearGradient>
+              ) : (
+                <View style={[sg.circle, { backgroundColor: disabled ? "#C8C8C8" : svc.iconGradient[0] }, disabled && sg.circleDisabled]}>
+                  <Ionicons name={svc.iconFocused} size={22} color={disabled ? "#888" : "#fff"} />
+                </View>
+              )}
+              {disabled && (
+                <View style={sg.comingSoonBadge}>
+                  <Text style={sg.comingSoonText}>Soon</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[sg.label, disabled && sg.labelDisabled]} numberOfLines={1}>{label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -57,36 +78,55 @@ function ServiceGridView({ services }: { services: ServiceDefinition[] }) {
   );
 }
 
-function ServiceListView({ services }: { services: ServiceDefinition[] }) {
+function ServiceListView({ services }: { services: ServiceItemProps[] }) {
   const perf = usePerformance();
+  const { showToast } = useToast();
   return (
     <View style={sl.list}>
       {services.map((svc) => {
         const label = shortLabel[svc.key] ?? svc.label;
         const href = String(svc.route) as RelativePathString;
+        const disabled = svc.isEnabled === false;
         return (
           <TouchableOpacity
             key={svc.key}
-            activeOpacity={0.7}
-            onPress={() => router.push(href)}
-            style={sl.row}
+            activeOpacity={disabled ? 0.6 : 0.7}
+            onPress={() => {
+              if (disabled) {
+                showToast(`${label} — Coming Soon`, "info");
+                return;
+              }
+              router.push(href);
+            }}
+            style={[sl.row, disabled && sl.rowDisabled]}
             accessibilityRole="button"
-            accessibilityLabel={label}
+            accessibilityLabel={disabled ? `${label} — Coming Soon` : label}
           >
             {perf.useGradients ? (
-              <LinearGradient colors={svc.iconGradient} style={sl.circle}>
-                <Ionicons name={svc.iconFocused} size={20} color="#fff" />
+              <LinearGradient
+                colors={disabled ? ["#C8C8C8", "#ADADAD"] as [string, string] : svc.iconGradient as [string, string]}
+                style={sl.circle}
+              >
+                <Ionicons name={svc.iconFocused} size={20} color={disabled ? "#888" : "#fff"} />
               </LinearGradient>
             ) : (
-              <View style={[sl.circle, { backgroundColor: svc.iconGradient[0] }]}>
-                <Ionicons name={svc.iconFocused} size={20} color="#fff" />
+              <View style={[sl.circle, { backgroundColor: disabled ? "#C8C8C8" : svc.iconGradient[0] }]}>
+                <Ionicons name={svc.iconFocused} size={20} color={disabled ? "#888" : "#fff"} />
               </View>
             )}
             <View style={sl.textWrap}>
-              <Text style={sl.name}>{label}</Text>
-              <Text style={sl.desc} numberOfLines={1}>{svc.description}</Text>
+              <Text style={[sl.name, disabled && sl.nameDisabled]}>{label}</Text>
+              <Text style={sl.desc} numberOfLines={1}>
+                {disabled ? "Coming Soon" : svc.description}
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
+            {disabled ? (
+              <View style={sl.comingSoonPill}>
+                <Text style={sl.comingSoonPillText}>Coming Soon</Text>
+              </View>
+            ) : (
+              <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
+            )}
           </TouchableOpacity>
         );
       })}
@@ -95,7 +135,7 @@ function ServiceListView({ services }: { services: ServiceDefinition[] }) {
 }
 
 export function ServiceSection({ services, isGuest }: {
-  services: ServiceDefinition[];
+  services: ServiceItemProps[];
   isGuest: boolean;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -157,12 +197,31 @@ const sg = StyleSheet.create({
     width: (W - H_PAD * 2) / 5,
     paddingVertical: 8,
   },
+  iconWrap: { position: "relative" },
   circle: {
     width: 48, height: 48, borderRadius: 16,
     alignItems: "center", justifyContent: "center",
     ...shadows.sm,
   },
+  circleDisabled: { opacity: 0.75 },
   label: { fontFamily: Font.semiBold, color: C.text, fontSize: 11, textAlign: "center" },
+  labelDisabled: { color: C.textMuted },
+  comingSoonBadge: {
+    position: "absolute",
+    top: -5,
+    right: -8,
+    backgroundColor: "#FF9500",
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    zIndex: 1,
+  },
+  comingSoonText: {
+    fontFamily: Font.bold,
+    fontSize: 7,
+    color: "#fff",
+    letterSpacing: 0.2,
+  },
 });
 
 const sl = StyleSheet.create({
@@ -174,6 +233,7 @@ const sl = StyleSheet.create({
     borderWidth: 1, borderColor: C.borderLight,
     ...shadows.sm,
   },
+  rowDisabled: { opacity: 0.6 },
   circle: {
     width: 44, height: 44, borderRadius: 14,
     alignItems: "center", justifyContent: "center",
@@ -181,5 +241,17 @@ const sl = StyleSheet.create({
   },
   textWrap: { flex: 1 },
   name: { fontFamily: Font.semiBold, fontSize: 14, color: C.text, marginBottom: 2 },
+  nameDisabled: { color: C.textMuted },
   desc: { fontFamily: Font.regular, fontSize: 11, color: C.textMuted },
+  comingSoonPill: {
+    backgroundColor: "#FF9500",
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  comingSoonPillText: {
+    fontFamily: Font.semiBold,
+    fontSize: 9,
+    color: "#fff",
+  },
 });
