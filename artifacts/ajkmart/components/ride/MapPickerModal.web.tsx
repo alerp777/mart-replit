@@ -30,22 +30,32 @@ type Props = {
   onClose: () => void;
 };
 
-const PICKER_ORIGIN = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+// Always derive the picker origin from the actual runtime host so the
+// component works correctly behind Replit's proxied preview, where
+// EXPO_PUBLIC_DOMAIN may be set but differ from the real proxied origin.
+// This is a .web.tsx file — window is always available here.
+function getRuntimeOrigin(): string {
+  return window.location.origin;
+}
 
 export function MapPickerModal({ visible, label = "Location", initialLat, initialLng, onConfirm, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
+  // Resolve at render time so it always reflects the real proxied host,
+  // never a stale build-time env-var value.
+  const pickerOrigin = getRuntimeOrigin();
+
   const lat = initialLat ?? 33.7294;
   const lng = initialLng ?? 73.3872;
-  const src = `${PICKER_ORIGIN}/api/maps/picker?lat=${lat}&lng=${lng}&zoom=14&label=${encodeURIComponent(label)}`;
+  const src = `${pickerOrigin}/api/maps/picker?lat=${lat}&lng=${lng}&zoom=14&label=${encodeURIComponent(label)}`;
 
   useEffect(() => {
     if (!visible) { setLoading(true); return; }
 
     function handleMessage(e: MessageEvent) {
-      if (e.origin !== PICKER_ORIGIN) return;
+      if (e.origin !== pickerOrigin) return;
       if (!e.data || e.data.type !== "MAP_PICKER_CONFIRM") return;
       const { lat, lng, address } = e.data as { lat: number; lng: number; address: string; type: string };
       if (typeof lat !== "number" || typeof lng !== "number") return;

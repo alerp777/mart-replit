@@ -42,15 +42,30 @@ export function PwaInstallBanner() {
         setVisible(true);
       };
       window.addEventListener("beforeinstallprompt", onPrompt);
-      return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+
+      // If beforeinstallprompt never fires within 5 s (sandboxed preview,
+      // already-installed, or unsupported browser) keep the banner hidden.
+      const timeout = setTimeout(() => {
+        if (!deferredPrompt.current) setVisible(false);
+      }, 5000);
+
+      return () => {
+        window.removeEventListener("beforeinstallprompt", onPrompt);
+        clearTimeout(timeout);
+      };
     }).catch(() => {});
   }, []);
 
   const handleInstall = async () => {
     if (!deferredPrompt.current) return;
-    await deferredPrompt.current.prompt();
-    const { outcome } = await deferredPrompt.current.userChoice;
-    if (outcome === "accepted") dismiss();
+    try {
+      await deferredPrompt.current.prompt();
+      const { outcome } = await deferredPrompt.current.userChoice;
+      if (outcome === "accepted") dismiss();
+    } catch {
+      // Prompt unavailable (sandboxed iframe or event already consumed) — hide gracefully.
+      dismiss();
+    }
     deferredPrompt.current = null;
   };
 

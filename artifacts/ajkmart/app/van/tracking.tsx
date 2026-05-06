@@ -75,6 +75,9 @@ function TrackingMap({ location, pickupLat, pickupLng }: { location: VanLocation
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useEffect(() => {
       if (location && iframeRef.current?.contentWindow) {
+        // The iframe is rendered from an inline srcDoc (no external origin),
+        // so "*" is the correct and safe targetOrigin — there is no sensitive
+        // cross-origin document to leak data to.
         iframeRef.current.contentWindow.postMessage(
           JSON.stringify({ type: "vanPos", lat: location.latitude, lng: location.longitude }),
           "*"

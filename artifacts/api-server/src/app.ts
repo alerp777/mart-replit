@@ -242,6 +242,17 @@ export function createServer() {
     noSniff: true,
     xssFilter: true,
   }));
+
+  // Explicit Permissions-Policy listing only modern, well-supported features.
+  // Omitting deprecated/unrecognised directives (e.g. interest-cohort,
+  // sync-xhr) prevents the browser from emitting "Unrecognized feature" warnings.
+  app.use((_req, res, next) => {
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=(), payment=(), fullscreen=(self)"
+    );
+    next();
+  });
   
   // CORS with credentials support
   app.use(cors({
@@ -549,7 +560,7 @@ function renderHubPage(): string {
       <div class="spinner"></div>
       <div class="loader-text" id="loaderText">Loading…</div>
     </div>
-    <iframe id="preview" src="/admin/"></iframe>
+    <iframe id="preview" src="/admin/" allow="fullscreen"></iframe>
   </div>
 
   <script>

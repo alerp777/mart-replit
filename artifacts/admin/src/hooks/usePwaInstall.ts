@@ -32,17 +32,29 @@ export function usePwaInstall() {
 
     window.addEventListener("beforeinstallprompt", onPrompt);
     window.addEventListener("appinstalled", onInstalled);
+
+    // Hide the banner automatically if beforeinstallprompt never fires
+    // (e.g. sandboxed Replit preview iframe, already-installed, or unsupported browser).
+    const timeout = setTimeout(() => {
+      setDeferredPrompt(prev => { if (!prev) setIsInstallable(false); return prev; });
+    }, 5000);
+
     return () => {
       window.removeEventListener("beforeinstallprompt", onPrompt);
       window.removeEventListener("appinstalled", onInstalled);
+      clearTimeout(timeout);
     };
   }, [isStandalone]);
 
   const promptInstall = async () => {
     if (!deferredPrompt) return;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") setIsInstalled(true);
+    try {
+      await deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") setIsInstalled(true);
+    } catch {
+      // Prompt unavailable (sandboxed iframe or event already consumed) — ignore silently.
+    }
     setDeferredPrompt(null);
     setIsInstallable(false);
   };
