@@ -94,6 +94,7 @@ import SmsGateways from "@/pages/sms-gateways";
 import AuthMethods from "@/pages/auth-methods";
 import AuditLogs from "@/pages/audit-logs";
 import WhatsAppDeliveryLog from "@/pages/whatsapp-delivery-log";
+import HealthDashboard from "@/pages/health-dashboard";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -342,6 +343,7 @@ function Router() {
       <Route path="/accessibility"><ProtectedRoute component={AccessibilityPage} requiredPermission="system.settings.view" /></Route>
       <Route path="/consent-log"><ProtectedRoute component={ConsentLogPage} requiredPermission="system.audit.view" /></Route>
       <Route path="/vendor-inventory-settings"><ProtectedRoute component={VendorInventorySettingsPage} requiredPermission="vendors.view" /></Route>
+      <Route path="/health-dashboard"><ProtectedRoute component={HealthDashboard} requiredPermission="system.settings.view" /></Route>
 
       <Route path="/403"><Forbidden /></Route>
       <Route component={NotFound} />

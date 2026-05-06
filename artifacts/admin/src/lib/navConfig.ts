@@ -62,6 +62,7 @@ import {
   Menu,
   ClipboardList,
   CheckCheck,
+  Activity,
 } from "lucide-react";
 import type { TranslationKey } from "@workspace/i18n";
 
@@ -115,6 +116,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { nameKey: "navConditionsHub",                       href: "/account-conditions", icon: Shield },
       { nameKey: "navConditionRules",                      href: "/condition-rules",    icon: Settings2 },
       { nameKey: "navActionLog" as TranslationKey,         href: "/audit-logs",         icon: ClipboardList },
+      { nameKey: "navHealthDashboard" as TranslationKey,   href: "/health-dashboard",   icon: Activity },
     ],
   },
   {
@@ -239,6 +241,7 @@ export const NAV_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "/error-monitor":         "Client and server error stream",
   "/security":              "Audit log of admin actions",
   "/audit-logs":            "Paginated log of all admin actions with filters",
+  "/health-dashboard":      "Live status of GPS tracking, content moderation rules, and service feature flags",
   "/delivery-access":      "Pilot whitelist and access requests",
   "/support-chat":          "Inbox plus chat moderation",
   "/faq-management":        "Help centre and FAQ articles",

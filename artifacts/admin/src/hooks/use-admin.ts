@@ -578,6 +578,16 @@ export const useRidesEnriched = (params?: {
   });
 };
 
+// Health Dashboard
+export const useHealthDashboard = () => {
+  return useQuery({
+    queryKey: ["admin-health-dashboard"],
+    queryFn: () => fetcher("/system/health-dashboard"),
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+};
+
 // Platform Settings
 export const usePlatformSettings = () => {
   return useQuery({

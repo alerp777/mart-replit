@@ -13,6 +13,7 @@ import {
   riderProfilesTable,
   vendorSchedulesTable,
   locationHistoryTable,
+  liveLocationsTable,
   supportMessagesTable,
   locationLogsTable,
   integrationTestHistoryTable,
@@ -2800,6 +2801,145 @@ router.get("/export/financial", adminAuth, async (req, res) => {
   } catch (e: any) {
     sendError(res, e.message || "Export failed", 500);
   }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   HEALTH DASHBOARD — aggregated real-time status for GPS, moderation, flags
+───────────────────────────────────────────────────────────────────────────── */
+
+function formatUptime(sec: number): string {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${s}s`;
+}
+
+router.get("/health-dashboard", async (_req, res) => {
+  const s = await getPlatformSettings();
+  const now = new Date();
+
+  /* ── Server health ── */
+  const uptimeSec = Math.floor(process.uptime());
+  let dbStatus: "ok" | "error" = "ok";
+  try {
+    await db.execute(sql`SELECT 1`);
+  } catch {
+    dbStatus = "error";
+  }
+  const mem = process.memoryUsage();
+  const memoryMb = Math.round(mem.heapUsed / 1024 / 1024);
+
+  /* ── GPS tracking stats ── */
+  const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+  const [[liveRiderRow], [recentPingRow]] = await Promise.all([
+    db.select({ c: count() }).from(liveLocationsTable).where(eq(liveLocationsTable.role, "rider")),
+    db.select({ c: count() }).from(liveLocationsTable).where(and(
+      eq(liveLocationsTable.role, "rider"),
+      gte(liveLocationsTable.updatedAt, fiveMinAgo),
+    )),
+  ]);
+  const liveTrackingEnabled = (s["feature_live_tracking"] ?? "on") === "on";
+  const spoofDetectionEnabled = (s["security_gps_spoof_detection"] ?? "on") !== "off";
+  const maxSpeedKmh = parseInt(s["security_max_speed_kmh"] ?? "150", 10);
+  const ridersInLiveTable = Number(liveRiderRow?.c ?? 0);
+  const ridersWithRecentPing = Number(recentPingRow?.c ?? 0);
+  const staleRiders = ridersInLiveTable - ridersWithRecentPing;
+
+  /* ── Content moderation ── */
+  const rawPatterns = s["moderation_custom_patterns"] ?? "";
+  let customPatternsCount = 0;
+  let customPatternsValid = true;
+  if (rawPatterns) {
+    try {
+      const parsed = JSON.parse(rawPatterns);
+      if (Array.isArray(parsed)) {
+        customPatternsCount = parsed.filter((p: any) => p && typeof p.pattern === "string").length;
+      } else {
+        customPatternsValid = false;
+      }
+    } catch {
+      customPatternsValid = false;
+    }
+  }
+  const flagKeywords = s["comm_flag_keywords"]
+    ? s["comm_flag_keywords"].split(",").map((k: string) => k.trim()).filter(Boolean)
+    : [];
+  const hidePhone   = (s["comm_hide_phone"]   ?? "on")  !== "off";
+  const hideEmail   = (s["comm_hide_email"]   ?? "on")  !== "off";
+  const hideCnic    = (s["comm_hide_cnic"]    ?? "on")  !== "off";
+  const hideBank    = (s["comm_hide_bank"]    ?? "on")  !== "off";
+  const hideAddress = (s["comm_hide_address"] ?? "off") !== "off";
+
+  /* ── Feature flags ── */
+  const features: Record<string, boolean> = {
+    mart:         (s["feature_mart"]          ?? "on")  === "on",
+    food:         (s["feature_food"]          ?? "on")  === "on",
+    rides:        (s["feature_rides"]         ?? "on")  === "on",
+    pharmacy:     (s["feature_pharmacy"]      ?? "on")  === "on",
+    parcel:       (s["feature_parcel"]        ?? "on")  === "on",
+    van:          (s["feature_van"]           ?? "on")  === "on",
+    wallet:       (s["feature_wallet"]        ?? "on")  === "on",
+    referral:     (s["feature_referral"]      ?? "on")  === "on",
+    newUsers:     (s["feature_new_users"]     ?? "on")  === "on",
+    chat:         (s["feature_chat"]          ?? "off") === "on",
+    liveTracking: liveTrackingEnabled,
+    reviews:      (s["feature_reviews"]       ?? "on")  === "on",
+    sos:          (s["feature_sos"]           ?? "on")  === "on",
+    weather:      (s["feature_weather"]       ?? "on")  === "on",
+  };
+  const maintenanceMode = (s["app_status"] ?? "active") === "maintenance";
+
+  /* ── Issue detection ── */
+  const issues: { level: "error" | "warning" | "info"; message: string }[] = [];
+  if (dbStatus === "error")
+    issues.push({ level: "error", message: "Database connection failed — the server cannot reach PostgreSQL" });
+  if (maintenanceMode)
+    issues.push({ level: "warning", message: "App is in maintenance mode — customers cannot access the platform" });
+  if (!liveTrackingEnabled)
+    issues.push({ level: "warning", message: "Live GPS tracking is disabled — rider positions will not update" });
+  if (rawPatterns && !customPatternsValid)
+    issues.push({ level: "error", message: "Content moderation: custom patterns JSON is malformed — all custom rules are inactive" });
+  if (!hidePhone)
+    issues.push({ level: "warning", message: "Content moderation: phone number masking is off — phone numbers may be exposed in chat" });
+  if (!features.sos)
+    issues.push({ level: "warning", message: "SOS alerts feature is disabled — riders/customers cannot send emergency alerts" });
+  if (staleRiders > 0)
+    issues.push({ level: "info", message: `${staleRiders} rider(s) in the live table have not pinged in the last 5 minutes` });
+
+  sendSuccess(res, {
+    generatedAt: now.toISOString(),
+    server: {
+      uptime: uptimeSec,
+      uptimeFormatted: formatUptime(uptimeSec),
+      db: dbStatus,
+      memoryMb,
+      nodeVersion: process.version,
+    },
+    gps: {
+      ridersInLiveTable,
+      ridersWithRecentPing,
+      staleRiders,
+      liveTrackingEnabled,
+      spoofDetectionEnabled,
+      maxSpeedKmh,
+    },
+    moderation: {
+      customPatternsCount,
+      customPatternsValid,
+      hidePhone,
+      hideEmail,
+      hideCnic,
+      hideBank,
+      hideAddress,
+      flagKeywordsCount: flagKeywords.length,
+    },
+    features,
+    maintenanceMode,
+    issues,
+  });
 });
 
 export default router;
