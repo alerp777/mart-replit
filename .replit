@@ -45,7 +45,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/api-server dev"
+args = "concurrently --kill-others-on-fail -n api,rider,vendor \"pnpm --filter @workspace/api-server run dev\" \"pnpm --filter @workspace/rider-app run dev\" \"pnpm --filter @workspace/vendor-app run dev\""
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -57,8 +57,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=3001 BASE_PATH=/rider/ VITE_API_PROXY_TARGET=http://127.0.0.1:5000 pnpm --filter @workspace/rider-app dev"
-waitForPort = 3001
+args = "echo \"Rider is started by Start application via concurrently\""
 
 [[workflows.workflow]]
 name = "Vendor App"
@@ -69,8 +68,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=3002 BASE_PATH=/vendor/ VITE_API_PROXY_TARGET=http://127.0.0.1:5000 pnpm --filter @workspace/vendor-app dev"
-waitForPort = 3002
+args = "echo \"Vendor is started by Start application via concurrently\""
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -154,11 +152,7 @@ localPort = 3000
 
 [[ports]]
 localPort = 3001
-externalPort = 6000
-
-[[ports]]
-localPort = 3002
-externalPort = 3002
+externalPort = 3001
 
 [[ports]]
 localPort = 3003
@@ -175,14 +169,6 @@ externalPort = 5173
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
 
 [[ports]]
 localPort = 8082
@@ -219,3 +205,7 @@ externalPort = 3000
 [[ports]]
 localPort = 23745
 externalPort = 9000
+
+[[ports]]
+localPort = 3002
+externalPort = 3002

@@ -55,7 +55,7 @@ pnpm install
 ```
 
 ### Workflows & Ports (Replit)
-All services are managed as separate Replit workflows. The API server proxies frontend apps through its dev proxy middleware.
+Each service runs as its own workflow. The API server at port 5000 also runs an Express dev-proxy that routes `/admin/`, `/rider/`, `/vendor/` to the sibling Vite apps.
 
 | Workflow name | Preview path | Port |
 |---|---|---|
@@ -64,7 +64,7 @@ All services are managed as separate Replit workflows. The API server proxies fr
 | `Rider App` | `/rider/` | 3001 |
 | `Vendor App` | `/vendor/` | 3002 |
 
-The API server at port 5000 proxies `/admin/` (→23744), `/rider/` (→3001), `/vendor/` (→3002) to the respective frontend Vite servers. All apps load correctly through the single port 5000 preview.
+Port env vars: `PORT=5000` (API), `ADMIN_DEV_PORT=23744`, `RIDER_DEV_PORT=3001`, `VENDOR_DEV_PORT=3002`. Each Vite config reads its own specific env var first (e.g. `RIDER_DEV_PORT || PORT`) so apps don't fight over the global `PORT` value.
 
 ### Shared Libraries
 The monorepo contains shared libraries under `lib/` that are consumed by the artifacts via workspace `*` references:

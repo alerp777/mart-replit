@@ -74,7 +74,7 @@ checkEnv();
 // ──────────────────────────────────────────────────────────────────────────
 
 // Configuration from environment variables
-const PORT = parseInt(process.env.PORT ?? "4000", 10);
+const PORT = parseInt(process.env.PORT ?? "5000", 10);
 const PORT_FALLBACK_ENABLE = (process.env.PORT_FALLBACK_ENABLE ?? "true").toLowerCase() === "true";
 const PORT_MAX_RETRIES = parseInt(process.env.PORT_MAX_RETRIES ?? "10", 10);
 

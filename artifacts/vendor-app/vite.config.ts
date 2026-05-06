@@ -4,10 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-/* PORT defaults to 5175 for the vendor Vite dev server when not provided.
-   Capacitor builds skip dev-server config entirely. */
-const rawPort = process.env.PORT;
-const port = rawPort ? Number(rawPort) : 5175;
+/* VENDOR_DEV_PORT takes priority, then PORT, then falls back to 3002.
+   This avoids conflicts when PORT=5000 is set globally for the API server. */
+const rawPort = process.env.VENDOR_DEV_PORT || process.env.PORT;
+const port = rawPort ? Number(rawPort) : 3002;
 
 if (rawPort && (Number.isNaN(port) || port <= 0)) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);

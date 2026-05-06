@@ -4,9 +4,9 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-// PORT defaults to 5173 for Vite dev server (standard convention)
-// Can be overridden via process.env.PORT or --port flag
-const rawPort = process.env.PORT || "5173";
+// ADMIN_DEV_PORT takes priority, then PORT, then falls back to 23744.
+// This avoids conflicts when PORT=5000 is set globally for the API server.
+const rawPort = process.env.ADMIN_DEV_PORT || process.env.PORT || "23744";
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
