@@ -6,8 +6,8 @@ import {
   AppWindow, Users, ShoppingBag, Car, Pill, Package,
   Wallet, Shield, Plus, Pencil, Trash2, Save, X,
   ToggleRight, ToggleLeft, RefreshCw, CheckCircle2,
-  AlertTriangle, WrenchIcon, Eye, EyeOff, ScrollText, CalendarDays, ChevronLeft, ChevronRight,
-  Zap, Activity, Download, Smartphone, FileText, List, LogOut, Globe,
+  AlertTriangle, WrenchIcon, Eye, EyeOff, CalendarDays, ChevronLeft, ChevronRight,
+  Zap, Activity, Smartphone, FileText, LogOut, Globe, ScrollText,
   ShoppingCart, UtensilsCrossed, Bus, LayoutDashboard, Rocket, ArrowUpRight, type LucideIcon,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
@@ -18,16 +18,13 @@ import { getAdminTiming } from "@/lib/adminTiming";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { Mail } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { useAuditLog } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ManageInSettingsLink } from "@/components/shared";
 import { ADMIN_SERVICE_LIST } from "@workspace/service-constants";
 import { safeCopyToClipboard } from "@/lib/safeClipboard";
-import { safeJsonStringifyPretty } from "@/lib/safeJson";
 
 type PlatformSetting = { key: string; value: string };
 
@@ -58,9 +55,7 @@ interface AdminSession {
 type AppManagementTab =
   | "overview"
   | "admins"
-  | "maintenance"
   | "release-notes"
-  | "audit-log"
   | "sessions";
 
 interface AdminFormBody {
@@ -263,99 +258,6 @@ function SessionsTab() {
   );
 }
 
-/* ── Audit Log Tab Component ── */
-function AuditLogTab() {
-  const { toast } = useToast();
-  const [page, setPage]     = useState(1);
-  const [action, setAction] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo]     = useState("");
-  const { data, isLoading, refetch, isFetching } = useAuditLog({ page, action: action || undefined, from: dateFrom || undefined, to: dateTo || undefined });
-
-  const logs: any[]  = data?.logs || [];
-  const total: number = data?.total || 0;
-  const pages: number = data?.pages || 1;
-
-  const fd = (d: string) => new Date(d).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Input placeholder="Filter by action..." value={action} onChange={e => { setAction(e.target.value); setPage(1); }} className="h-9 rounded-xl text-sm sm:w-56" />
-        <div className="flex items-center gap-2">
-          <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
-          <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="h-9 rounded-xl text-xs w-32" />
-          <span className="text-xs text-muted-foreground">–</span>
-          <Input type="date" value={dateTo}   onChange={e => { setDateTo(e.target.value); setPage(1); }}   className="h-9 rounded-xl text-xs w-32" />
-          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">Clear</button>}
-        </div>
-        <div className="flex gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={() => {
-            const json = safeJsonStringifyPretty(logs);
-            if (!json) {
-              toast({ title: "Export failed", description: "Could not serialize audit log entries.", variant: "destructive" });
-              return;
-            }
-            const blob = new Blob([json], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url; a.download = `audit-log-${new Date().toISOString().slice(0,10)}.json`; a.click();
-            URL.revokeObjectURL(url);
-          }} disabled={logs.length === 0} className="h-9 rounded-xl gap-2">
-            <Download className="w-4 h-4" /> Export
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
-
-      <Card className="rounded-2xl border-border/50 overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center text-muted-foreground">Loading audit log...</div>
-        ) : logs.length === 0 ? (
-          <div className="p-12 text-center">
-            <ScrollText className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-muted-foreground">No audit log entries found</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-border/50">
-            {logs.map((log: any) => (
-              <div key={log.id} className="flex items-start gap-4 p-4 hover:bg-muted/30">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                  <Shield className="w-4 h-4 text-slate-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-sm">{log.adminName || "Unknown Admin"}</p>
-                    <Badge variant="outline" className="text-[10px] font-mono bg-blue-50 text-blue-700 border-blue-200">{log.action}</Badge>
-                    {log.targetId && <span className="text-xs text-muted-foreground font-mono">{log.targetId}</span>}
-                  </div>
-                  {log.details && <p className="text-xs text-muted-foreground mt-0.5 truncate">{typeof log.details === "string" ? log.details : JSON.stringify(log.details)}</p>}
-                </div>
-                <span className="text-xs text-muted-foreground shrink-0">{fd(log.createdAt)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {pages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">{total} entries · page {page} of {pages}</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="h-8 rounded-xl gap-1">
-              <ChevronLeft className="w-3.5 h-3.5" /> Prev
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="h-8 rounded-xl gap-1">
-              Next <ChevronRight className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function AppManagement() {
   const { language } = useLanguage();
@@ -369,7 +271,6 @@ export default function AppManagement() {
   const [editingAdmin, setEditingAdmin] = useState<AdminAccount | null>(null);
   const [adminDialog, setAdminDialog] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
-  const [maintenanceMsg, setMaintenanceMsg] = useState("");
 
   /* ── Release Notes state ── */
   const [rnDialog, setRnDialog] = useState(false);
@@ -410,7 +311,6 @@ export default function AppManagement() {
   const admins: AdminAccount[] = adminsData?.accounts || [];
   const settings: any[] = settingsData?.settings || [];
   const appStatus = getSettingValue(settings, "app_status", "active");
-  const maintenanceMsgSaved = getSettingValue(settings, "content_maintenance_msg", "");
   const releaseNotes: any[] = rnData?.releaseNotes || [];
 
   /* ── Sync compliance state from platform settings (in useEffect to avoid setState-in-render) ── */
@@ -627,6 +527,12 @@ export default function AppManagement() {
                 <Plus className="w-4 h-4"/> New Admin
               </Button>
             )}
+            <Link
+              href="/audit-logs"
+              className="inline-flex items-center gap-1.5 h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+            >
+              <ScrollText className="w-4 h-4" /> View Full Audit Log →
+            </Link>
             <Button variant="outline" onClick={() => { refetchOverview(); refetchAdmins(); }} className="h-10 rounded-xl gap-2">
               <RefreshCw className="w-4 h-4"/> Refresh
             </Button>
@@ -634,40 +540,36 @@ export default function AppManagement() {
         }
       />
 
-      {/*
-        App Status Banner — read-only awareness only. Editing of
-        Maintenance Mode lives at /settings/general per SETTINGS_MAP.md;
-        the banner used to expose an inline "Go Live" button which
-        violated the single-edit-surface rule, so it now routes the admin
-        to the canonical editor instead of mutating directly.
-      */}
-      {appStatus === "maintenance" && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl px-5 py-4 flex items-center gap-3">
-          <WrenchIcon className="w-6 h-6 text-amber-600 flex-shrink-0"/>
-          <div className="flex-1">
-            <p className="font-bold text-amber-800">Maintenance Mode is ON</p>
-            <p className="text-sm text-amber-700">The app is currently in maintenance — users cannot access it.</p>
-          </div>
-          <Link
-            href="/settings/general"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 admin-focus-ring shrink-0"
-          >
-            Manage in Settings
-            <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
-          </Link>
+      {/* App Status Banner — always-visible read-only summary. Editing lives at /settings/general. */}
+      <div className={`rounded-2xl border px-5 py-4 flex items-center gap-3 ${appStatus === "maintenance" ? "bg-amber-50 border-amber-300" : "bg-green-50 border-green-200"}`}>
+        <WrenchIcon className={`w-6 h-6 flex-shrink-0 ${appStatus === "maintenance" ? "text-amber-600" : "text-green-600"}`}/>
+        <div className="flex-1">
+          <p className={`font-bold ${appStatus === "maintenance" ? "text-amber-800" : "text-green-800"}`}>
+            {appStatus === "maintenance" ? "Maintenance Mode is ON — users blocked" : "App is Live — all systems normal"}
+          </p>
+          <p className={`text-sm ${appStatus === "maintenance" ? "text-amber-700" : "text-green-700"}`}>
+            {appStatus === "maintenance"
+              ? "The customer apps are showing a maintenance screen. Go to Settings → General to bring the app back online."
+              : "Customers can access all services normally. Toggle maintenance mode in Settings → General if you need downtime."}
+          </p>
         </div>
-      )}
+        <Link
+          href="/settings/general"
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 admin-focus-ring shrink-0 ${appStatus === "maintenance" ? "bg-amber-700" : "bg-green-700"}`}
+        >
+          {appStatus === "maintenance" ? "Go Live in Settings" : "Manage in Settings"}
+          <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+        </Link>
+      </div>
 
       {/* Tabs — scrollable on mobile */}
       <div className="overflow-x-auto -mx-1 px-1">
         <div className="flex gap-1 bg-muted p-1 rounded-xl w-max min-w-full">
           {([
-            { id: "overview",       label: "Overview",                 Icon: LayoutDashboard },
-            { id: "admins",         label: "Admin Accounts",           Icon: Users },
-            { id: "maintenance",    label: "Services & Maintenance",   Icon: WrenchIcon },
-            { id: "release-notes",  label: "Release Notes",            Icon: Rocket },
-            { id: "sessions",       label: "Active Sessions",          Icon: Globe },
-            { id: "audit-log",      label: "Audit Log",                Icon: List },
+            { id: "overview",       label: "Overview",        Icon: LayoutDashboard },
+            { id: "admins",         label: "Admin Accounts",  Icon: Users },
+            { id: "release-notes",  label: "Release Notes",   Icon: Rocket },
+            { id: "sessions",       label: "Active Sessions", Icon: Globe },
           ] as { id: AppManagementTab; label: string; Icon: LucideIcon }[]).map(t => (
             <button
               key={t.id}
@@ -827,80 +729,6 @@ export default function AppManagement() {
         </div>
       )}
 
-      {/*
-        ══ Services & Maintenance Tab ══
-        Editing of Maintenance Mode and per-service feature toggles has been
-        consolidated under the Settings hub so there is exactly one source of
-        truth (see SETTINGS_MAP.md). This tab now shows a read-only status
-        summary and routes the admin to the canonical editor. The banner at
-        the top of the page still surfaces the "Go Live" shortcut when the
-        app is in maintenance — that's a high-urgency action so it stays.
-      */}
-      {tab === "maintenance" && (
-        <div className="space-y-5">
-          {/* Maintenance Mode — canonical editor lives at /settings/general */}
-          <ManageInSettingsLink
-            label="Maintenance Mode"
-            value={appStatus === "maintenance" ? "In Maintenance — users blocked" : "Live — all systems normal"}
-            description="When enabled, the customer apps show a maintenance screen and cannot place orders, book rides, or send parcels."
-            tone={appStatus === "maintenance" ? "warning" : "success"}
-            to="/settings/general"
-          />
-
-          {/* Service toggles — canonical editor lives at /settings/services */}
-          <ManageInSettingsLink
-            label="Live Service Control"
-            value={`${SERVICE_MAP.filter(svc => getSettingValue(settings, svc.setting, "on") === "on").length} of ${SERVICE_MAP.length} services enabled`}
-            description="Toggle individual customer-facing services (Food, Mart, Rides, Pharmacy, Parcel, Van) on or off. Changes apply immediately."
-            tone="info"
-            to="/settings/services"
-          />
-
-          {/* Read-only Service status grid for at-a-glance reference. */}
-          <Card className="rounded-2xl border-border/50 shadow-sm">
-            <div className="p-5 border-b border-border/50 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center"><Zap className="w-5 h-5 text-blue-600"/></div>
-                <div>
-                  <h2 className="font-bold">Service Status (read-only)</h2>
-                  <p className="text-xs text-muted-foreground">Snapshot — use the link above to toggle</p>
-                </div>
-              </div>
-              <Badge variant="outline" className="text-xs">
-                {SERVICE_MAP.filter(svc => getSettingValue(settings, svc.setting, "on") === "on").length}/{SERVICE_MAP.length} Active
-              </Badge>
-            </div>
-            <CardContent className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {SERVICE_MAP.map(svc => {
-                  const featureVal = getSettingValue(settings, svc.setting, "on");
-                  const isOn = featureVal === "on";
-                  return (
-                    <div
-                      key={svc.key}
-                      className={`flex items-center gap-3 rounded-xl border p-3 ${isOn ? "border-green-200 bg-green-50/40" : "border-gray-200 bg-gray-50/40"}`}
-                    >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isOn ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-500"}`}>
-                        <svc.Icon className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">{svc.label}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-1">{svc.description}</p>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] flex-shrink-0 ${isOn ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-600 border-red-200"}`}
-                      >
-                        {isOn ? "Live" : "Off"}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
 
       {/* ══ Release Notes Tab ══ */}
       {tab === "release-notes" && (
@@ -1190,9 +1018,6 @@ export default function AppManagement() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* ══ Audit Log Tab ══ */}
-      {tab === "audit-log" && <AuditLogTab />}
 
       {/* ══ Sessions Tab ══ */}
       {tab === "sessions" && <SessionsTab />}

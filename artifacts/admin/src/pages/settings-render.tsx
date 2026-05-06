@@ -4,7 +4,7 @@ import {
   AlertTriangle, CheckCircle2, ShieldCheck, UserPlus, Zap,
   Server, ToggleRight, FileText, Phone, Building2, Link as LinkIcon,
   BarChart3, Wallet, Banknote, Truck, Bike, Car, RotateCcw, Settings,
-  Users, Star, Percent, Store,
+  Users, Star, Percent, Store, ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -254,7 +254,7 @@ export function renderSection(
       const on = fv(fkey);
       const dangerOn = danger && on;
       return (
-        <div className={`rounded-xl border p-4 transition-all ${dangerOn ? "bg-orange-50 border-orange-300" : on ? "bg-white border-slate-200" : "bg-red-50 border-red-200"}`}>
+        <div className={`rounded-xl border p-4 transition-all ${dangerOn ? "bg-red-50 border-red-200" : on ? "bg-white border-slate-200" : "bg-slate-50 border-slate-200"}`}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 flex-1 min-w-0">
               <span className="text-2xl mt-0.5 shrink-0">{icon}</span>
@@ -262,22 +262,22 @@ export function renderSection(
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-sm text-slate-800">{label}</p>
                   {danger && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">
-                      ⚠️ Danger
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                      ⚠️ High-Risk
                     </span>
                   )}
                   {enforcement === "api" && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">
-                      <Server size={9} />API Enforced
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
+                      <Server size={9} />API
                     </span>
                   )}
                   {enforcement === "client" && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
-                      📱 Client-Side
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                      📱 Client
                     </span>
                   )}
                   {enforcement === "both" && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-700 border border-teal-200">
                       <Server size={9} />API + Client
                     </span>
                   )}
@@ -287,14 +287,14 @@ export function renderSection(
               </div>
             </div>
             <div className="shrink-0 flex flex-col items-center gap-1" onClick={() => handleToggle(fkey, !on)}>
-              <div className={`w-11 h-6 rounded-full relative transition-colors cursor-pointer ${dangerOn ? "bg-orange-500" : on ? "bg-green-500" : "bg-gray-300"} ${dirtyKeys.has(fkey) ? "ring-2 ring-amber-400" : ""}`}>
+              <div className={`w-11 h-6 rounded-full relative transition-colors cursor-pointer ${dangerOn ? "bg-red-500" : on ? "bg-green-500" : "bg-gray-300"} ${dirtyKeys.has(fkey) ? "ring-2 ring-amber-400" : ""}`}>
                 <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${on ? "translate-x-5" : "translate-x-0.5"}`} />
               </div>
-              <span className={`text-[10px] font-bold ${dangerOn ? "text-orange-600" : on ? "text-green-600" : "text-gray-400"}`}>{on ? "ON" : "OFF"}</span>
+              <span className={`text-[10px] font-bold ${dangerOn ? "text-red-600" : on ? "text-green-600" : "text-gray-400"}`}>{on ? "Enabled" : "Disabled"}</span>
             </div>
           </div>
           {dangerOn && (
-            <div className="mt-3 pt-3 border-t border-orange-200 flex items-center gap-1.5 text-orange-700">
+            <div className="mt-3 pt-3 border-t border-red-200 flex items-center gap-1.5 text-red-700">
               <AlertTriangle size={11} />
               <span className="text-[11px] font-medium">Caution: all newly registered accounts require manual admin approval before they can log in</span>
             </div>
@@ -310,25 +310,25 @@ export function renderSection(
     };
 
     const coreServices = [
-      { fkey: "feature_mart",     label: "Mart / Grocery",     icon: "🛒", desc: "Online grocery orders — order placement + wallet payment gated", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
-      { fkey: "feature_food",     label: "Food Delivery",      icon: "🍔", desc: "Restaurant food orders — order placement + wallet payment gated", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
-      { fkey: "feature_rides",    label: "Taxi & Bike Rides",  icon: "🚗", desc: "All ride bookings blocked when off — ridesEnabled gate in API",   apps: "📱 Customer  •  🏍️ Rider",             enforcement: "api" as const },
-      { fkey: "feature_pharmacy", label: "Pharmacy",           icon: "💊", desc: "Medicine orders blocked at API level — pharmacyEnabled gate",     apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
-      { fkey: "feature_parcel",   label: "Parcel Delivery",    icon: "📦", desc: "Parcel shipments blocked at API level — parcelEnabled gate",      apps: "📱 Customer  •  🏍️ Rider",             enforcement: "api" as const },
+      { fkey: "feature_mart",     label: "Mart / Grocery",     icon: "🛒", desc: "Allow customers to browse and order groceries and products.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+      { fkey: "feature_food",     label: "Food Delivery",      icon: "🍔", desc: "Let customers order food from restaurants for delivery.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+      { fkey: "feature_rides",    label: "Taxi & Bike Rides",  icon: "🚗", desc: "Enable the taxi and bike ride-hailing service.", apps: "📱 Customer  •  🏍️ Rider",             enforcement: "api" as const },
+      { fkey: "feature_pharmacy", label: "Pharmacy",           icon: "💊", desc: "Allow customers to order medicines and health products online.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+      { fkey: "feature_parcel",   label: "Parcel Delivery",    icon: "📦", desc: "Let customers send and receive parcels through riders.", apps: "📱 Customer  •  🏍️ Rider",             enforcement: "api" as const },
     ];
     const accountFeatures = [
-      { fkey: "feature_wallet",       label: "Digital Wallet",         icon: "💰", desc: "Wallet top-up, send, and all wallet payments across all services", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "both" as const },
-      { fkey: "wallet_mpin_enabled", label: "MPIN Enforcement",       icon: "🔐", desc: "Require MPIN verification for wallet send and withdraw operations", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
-      { fkey: "feature_referral",     label: "Referral Program",       icon: "🎁", desc: "Refer & Earn card visibility + referral bonus tracking in app",    apps: "📱 Customer only",                        enforcement: "client" as const },
-      { fkey: "feature_new_users",    label: "New User Registration",  icon: "👤", desc: "Blocks all new sign-ups at auth API — existing users unaffected",  apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
-      { fkey: "user_require_approval",label: "Require Account Approval", icon: "🔒", desc: "New accounts are inactive until manually approved by an admin — use with caution", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const, danger: true },
+      { fkey: "feature_wallet",       label: "Digital Wallet",          icon: "💰", desc: "Allow customers to top up, send money, and pay using the in-app wallet.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+      { fkey: "wallet_mpin_enabled",  label: "MPIN Protection",         icon: "🔐", desc: "Require a 6-digit PIN before any wallet send or withdraw action.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+      { fkey: "feature_referral",     label: "Referral Program",        icon: "🎁", desc: "Show the Refer & Earn card and track referral bonuses for customers.", apps: "📱 Customer only",                        enforcement: "client" as const },
+      { fkey: "feature_new_users",    label: "New User Registration",   icon: "👤", desc: "Allow new customers to register. Turn off to freeze sign-ups.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+      { fkey: "user_require_approval",label: "Require Account Approval", icon: "🔒", desc: "New accounts wait for an admin to approve them before they can log in.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const, danger: true },
     ];
     const experienceFeatures = [
-      { fkey: "feature_chat",          label: "In-App Chat / WhatsApp",  icon: "💬", desc: "Chat icon in customer app — routes to WhatsApp support",          apps: "📱 Customer only",                        enforcement: "client" as const },
-      { fkey: "feature_live_tracking", label: "Live GPS Order Tracking",  icon: "📍", desc: "Customer can see rider's real-time location on map while en-route", apps: "📱 Customer  •  🏍️ Rider",             enforcement: "both" as const },
-      { fkey: "feature_reviews",       label: "Reviews & Star Ratings",   icon: "⭐", desc: "Star ratings + written reviews on orders and rides",               apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
-      { fkey: "feature_sos",            label: "SOS Emergency Alerts",    icon: "🆘", desc: "Emergency SOS button for riders and customers during active rides", apps: "📱 Customer  •  🏍️ Rider",             enforcement: "both" as const },
-      { fkey: "feature_weather",         label: "Weather Widget",          icon: "🌤️", desc: "Weather info card on customer home screen — shows temperature, humidity & wind", apps: "📱 Customer only",                        enforcement: "client" as const },
+      { fkey: "feature_chat",          label: "In-App Chat / WhatsApp",  icon: "💬", desc: "Show the chat button in the customer app, which opens a WhatsApp support conversation.", apps: "📱 Customer only",                        enforcement: "client" as const },
+      { fkey: "feature_live_tracking", label: "Live GPS Order Tracking",  icon: "📍", desc: "Let customers see their rider's real-time location on a map during delivery.", apps: "📱 Customer  •  🏍️ Rider",             enforcement: "both" as const },
+      { fkey: "feature_reviews",       label: "Reviews & Star Ratings",   icon: "⭐", desc: "Let customers leave star ratings and written reviews after orders and rides.", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+      { fkey: "feature_sos",           label: "SOS Emergency Alerts",    icon: "🆘", desc: "Show an emergency SOS button for riders and customers during active rides.", apps: "📱 Customer  •  🏍️ Rider",             enforcement: "both" as const },
+      { fkey: "feature_weather",       label: "Weather Widget",          icon: "🌤️", desc: "Show a weather card on the customer home screen with temperature and conditions.", apps: "📱 Customer only",                        enforcement: "client" as const },
     ];
 
     const allOn  = [...coreServices, ...accountFeatures, ...experienceFeatures].every(f => fv(f.fkey));
@@ -373,78 +373,41 @@ export function renderSection(
           </div>
         )}
 
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <ShoppingCart size={15} className="text-slate-500" />
+        <details open className="group/core">
+          <summary className="list-none flex items-center gap-2 mb-3 cursor-pointer select-none rounded-lg px-1 py-1 hover:bg-slate-50 transition-colors">
+            <ShoppingCart size={15} className="text-slate-500 shrink-0" />
             <p className="font-semibold text-sm text-slate-700">Core Services</p>
             <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">orders / rides / pharmacy / parcel API</span>
-          </div>
-          <div className="space-y-3">
+            <ChevronDown size={13} className="ml-auto text-slate-400 transition-transform group-open/core:rotate-0 -rotate-90" />
+          </summary>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {coreServices.map(f => <FTog key={f.fkey} {...f} />)}
           </div>
-        </div>
+        </details>
 
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <UserPlus size={15} className="text-slate-500" />
-            <p className="font-semibold text-sm text-slate-700">Account & Business</p>
+        <details open className="group/account">
+          <summary className="list-none flex items-center gap-2 mb-3 cursor-pointer select-none rounded-lg px-1 py-1 hover:bg-slate-50 transition-colors">
+            <UserPlus size={15} className="text-slate-500 shrink-0" />
+            <p className="font-semibold text-sm text-slate-700">Account Features</p>
             <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">wallet / auth / customer API</span>
-          </div>
-          <div className="space-y-3">
+            <ChevronDown size={13} className="ml-auto text-slate-400 transition-transform group-open/account:rotate-0 -rotate-90" />
+          </summary>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {accountFeatures.map(f => <FTog key={f.fkey} {...f} />)}
           </div>
-        </div>
+        </details>
 
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <MessageSquare size={15} className="text-slate-500" />
+        <details open className="group/experience">
+          <summary className="list-none flex items-center gap-2 mb-3 cursor-pointer select-none rounded-lg px-1 py-1 hover:bg-slate-50 transition-colors">
+            <MessageSquare size={15} className="text-slate-500 shrink-0" />
             <p className="font-semibold text-sm text-slate-700">Experience Features</p>
             <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">chat / tracking / reviews API</span>
-          </div>
-          <div className="space-y-3">
+            <ChevronDown size={13} className="ml-auto text-slate-400 transition-transform group-open/experience:rotate-0 -rotate-90" />
+          </summary>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {experienceFeatures.map(f => <FTog key={f.fkey} {...f} />)}
           </div>
-        </div>
-
-        {/* Access Controls */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Shield size={15} className="text-slate-500" />
-            <p className="font-semibold text-sm text-slate-700">Access Controls</p>
-            <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">user approval / registration gating</span>
-          </div>
-          <div className={`rounded-xl border p-4 transition-all ${fv("user_require_approval") ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <span className="text-2xl mt-0.5 shrink-0">🔒</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-sm text-slate-800">Require Admin Approval for New Users</p>
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">
-                      <Server size={9} />API Enforced
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    When ON — new accounts are created as <span className="font-mono font-bold">inactive</span> and cannot log in until an admin approves them from the Users page.
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-1 font-mono">📱 Customer  •  🏪 Vendor  •  🏍️ Rider</p>
-                </div>
-              </div>
-              <div className="shrink-0 flex flex-col items-center gap-1" onClick={() => handleToggle("user_require_approval", !fv("user_require_approval"))}>
-                <div className={`w-11 h-6 rounded-full relative transition-colors cursor-pointer ${fv("user_require_approval") ? "bg-amber-500" : "bg-gray-300"} ${dirtyKeys.has("user_require_approval") ? "ring-2 ring-amber-400" : ""}`}>
-                  <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${fv("user_require_approval") ? "translate-x-5" : "translate-x-0.5"}`} />
-                </div>
-                <span className={`text-[10px] font-bold ${fv("user_require_approval") ? "text-amber-600" : "text-gray-400"}`}>{fv("user_require_approval") ? "ON" : "OFF"}</span>
-              </div>
-            </div>
-            {fv("user_require_approval") && (
-              <div className="mt-3 pt-3 border-t border-amber-200 flex items-center gap-1.5 text-amber-700">
-                <AlertTriangle size={11} />
-                <span className="text-[11px] font-medium">Approval mode active — new accounts need manual activation from the Users page</span>
-              </div>
-            )}
-          </div>
-        </div>
+        </details>
 
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">

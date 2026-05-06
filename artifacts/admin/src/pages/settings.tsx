@@ -124,9 +124,9 @@ const TOP10_CONFIG: Record<Top10Key, {
     children: ["dispatch", "orders", "delivery", "rides", "van", "onboarding"],
   },
   roles: {
-    label: "Roles", emoji: "👤", icon: Users,
+    label: "Role Limits & Rates", emoji: "👤", icon: Users,
     color: "text-blue-600", bg: "bg-blue-50",
-    description: "Per-role limits, permissions and approval rules",
+    description: "Per-role earnings, wallet limits, commission rates and settlement rules",
     children: ["customer", "rider", "vendor"],
   },
   finance_payments: {

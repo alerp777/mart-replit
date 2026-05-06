@@ -210,7 +210,7 @@ export const NAV_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "/users":                "Customers, admins and roles",
   "/roles-permissions":   "Admin RBAC matrix and role assignment",
   "/settings":             "Single source of truth for platform settings",
-  "/app-management":       "Service status overview, admin accounts and audit log",
+  "/app-management":       "Service status overview, admin accounts and release notes",
   "/launch-control":       "Pre-launch readiness checklist",
   "/auth-methods":         "Per-role login methods (Phone, Email, OAuth, 2FA, Biometric)",
   "/otp-control":          "OTP delivery providers and policies",

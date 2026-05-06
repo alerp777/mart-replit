@@ -56,7 +56,7 @@ export function Toggle({ checked, onChange, label, icon, isDirty, danger, sub }:
             {checked
               ? danger
                 ? <><AlertTriangle className="w-3 h-3" /> Enabled</>
-                : <><CheckCircle2 className="w-3 h-3" /> Active</>
+                : <><CheckCircle2 className="w-3 h-3" /> Enabled</>
               : <><Circle className="w-3 h-3" /> Disabled</>
             }
           </p>
