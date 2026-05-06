@@ -4,7 +4,7 @@ import { apiFetch } from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { fc, CARD, INPUT, SELECT, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
-import { useCurrency } from "../lib/useConfig";
+import { useCurrency, usePlatformConfig, formatDateTz } from "../lib/useConfig";
 
 const EMPTY_PROMO = {
   title: "",
@@ -19,6 +19,8 @@ const EMPTY_PROMO = {
 export default function Promos() {
   const qc = useQueryClient();
   const { symbol: currencySymbol } = useCurrency();
+  const { config } = usePlatformConfig();
+  const tz = config.regional?.timezone ?? "Asia/Karachi";
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_PROMO });
   const [toast, setToast] = useState("");
@@ -155,7 +157,7 @@ export default function Promos() {
                     </p>
                     {promo.expiresAt && (
                       <p className="text-[10px] text-gray-400 mt-0.5">
-                        Expires: {new Date(promo.expiresAt).toLocaleDateString("en-PK")}
+                        Expires: {formatDateTz(promo.expiresAt, { day: "numeric", month: "short", year: "numeric" }, tz)}
                       </p>
                     )}
                     {promo.usedCount != null && (

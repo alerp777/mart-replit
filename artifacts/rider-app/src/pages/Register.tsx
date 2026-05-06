@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { api, isApiError } from "../lib/api";
-import { usePlatformConfig, getRiderAuthConfig } from "../lib/useConfig";
+import { usePlatformConfig, getRiderAuthConfig, buildPhoneValidator } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { executeCaptcha, loadGoogleGSIToken, loadFacebookAccessToken, decodeGoogleJwtPayload, formatPhoneForApi } from "@workspace/auth-utils";
@@ -107,6 +107,8 @@ export default function Register() {
 
   const auth = getRiderAuthConfig(config);
   const captchaSiteKey = config.auth?.captchaSiteKey;
+  const isValidPhone = buildPhoneValidator(config);
+  const phoneHint = config.regional?.phoneHint ?? "03XXXXXXXXX";
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -247,7 +249,7 @@ export default function Register() {
 
   const validateStep1 = (): boolean => {
     if (!name.trim()) { setError(T("nameRequired")); return false; }
-    if (!phone || phone.length < 10) { setError(T("enterValidPhone")); return false; }
+    if (!phone || !isValidPhone(phone)) { setError(`${T("enterValidPhone")} (e.g. ${phoneHint})`); return false; }
     if (!email || !email.includes("@")) { setError(T("enterValidEmail")); return false; }
     if (!address.trim()) { setError(T("homeAddressRequired")); return false; }
     if (!city) { setError(T("selectCity")); return false; }

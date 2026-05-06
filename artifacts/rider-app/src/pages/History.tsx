@@ -5,14 +5,13 @@ import {
   ShoppingCart, CreditCard, Calendar, RefreshCw,
 } from "lucide-react";
 import { api } from "../lib/api";
-import { usePlatformConfig } from "../lib/useConfig";
+import { usePlatformConfig, formatDateTz } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual } from "@workspace/i18n";
 import { PullToRefresh } from "../components/PullToRefresh";
 
-function formatDate(d: string | Date) {
-  const date = new Date(d);
-  return date.toLocaleDateString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+function formatDate(d: string | Date, tz?: string) {
+  return formatDateTz(d, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }, tz ?? "Asia/Karachi");
 }
 
 type FilterPeriod = "today" | "week" | "all";
@@ -33,6 +32,7 @@ export default function History() {
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const { config } = usePlatformConfig();
+  const tz = config.regional?.timezone ?? "Asia/Karachi";
   const formatCurrency = (n: number) => `${config.platform.currencySymbol ?? "Rs."} ${Math.round(n).toLocaleString()}`;
   const qc = useQueryClient();
 
@@ -228,7 +228,7 @@ export default function History() {
                           {item.kind === "ride" ? `${item.type} ${T("ride")}` : `${item.type} ${T("deliveryLabel")}`}
                         </p>
                         <p className="text-xs text-gray-500 truncate mt-0.5">{item.address || "—"}</p>
-                        <p className="text-[11px] text-gray-400 mt-0.5">{formatDate(item.createdAt)}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{formatDate(item.createdAt, tz)}</p>
                       </div>
                       <div className="text-right flex-shrink-0">
                         {completed ? (
@@ -259,7 +259,7 @@ export default function History() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Date</span>
-                          <span className="text-xs text-gray-600">{formatDate(item.createdAt)}</span>
+                          <span className="text-xs text-gray-600">{formatDate(item.createdAt, tz)}</span>
                         </div>
                         {(completed || cancelled) && (
                           <div className="flex items-center gap-2">

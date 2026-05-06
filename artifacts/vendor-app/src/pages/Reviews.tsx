@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
+import { usePlatformConfig, formatDateTz } from "../lib/useConfig";
 
 function StarBar({ starValue, count, total }: { starValue: number; count: number; total: number }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -44,6 +45,8 @@ function StatusPill({ status, T }: { status: string; T: (k: TranslationKey) => s
 export default function Reviews() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const { config } = usePlatformConfig();
+  const tz = config.regional?.timezone ?? "Asia/Karachi";
 
   const [page, setPage]           = useState(1);
   const [stars, setStars]         = useState<string>("");
@@ -217,9 +220,7 @@ export default function Reviews() {
                           {r.orderType}
                         </span>
                       )}
-                      {new Date(r.createdAt).toLocaleDateString("en-PK", {
-                        day: "numeric", month: "short", year: "numeric",
-                      })}
+                      {formatDateTz(r.createdAt, { day: "numeric", month: "short", year: "numeric" }, tz)}
                     </p>
                   </div>
                 </div>

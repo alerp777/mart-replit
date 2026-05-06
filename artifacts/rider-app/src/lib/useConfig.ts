@@ -335,8 +335,8 @@ export function usePlatformConfig() {
   const { data, isLoading } = useQuery<PlatformConfig>({
     queryKey: ["platform-config"],
     queryFn: () => apiFetch("/platform-config") as Promise<PlatformConfig>,
-    staleTime: 60_000,
-    refetchInterval: 2 * 60_000,
+    staleTime: 25_000,
+    refetchInterval: 30_000,
     retry: 2,
   });
   const config: PlatformConfig = data

@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
-import { usePlatformConfig } from "../lib/useConfig";
+import { usePlatformConfig, formatDateTz } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "../components/PullToRefresh";
@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 const fc  = (n: number, currencySymbol = "Rs.") => `${currencySymbol} ${Math.round(n).toLocaleString()}`;
-const fd  = (d: string | Date) => new Date(d).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const fd  = (d: string | Date, tz?: string) => formatDateTz(d, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }, tz ?? "Asia/Karachi");
 const fdr = (d: string | Date) => {
   const diff = Date.now() - new Date(d).getTime();
   const h = Math.floor(diff / 3600000);
@@ -203,6 +203,8 @@ export default function Wallet() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
   const currency = config.platform.currencySymbol ?? "Rs.";
+  const tz = config.regional?.timezone ?? "Asia/Karachi";
+  const fd = (d: string | Date) => formatDateTz(d, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }, tz);
   const riderKeepPct      = config.rider?.keepPct ?? config.finance.riderEarningPct;
   const minPayout         = config.rider?.minPayout ?? config.finance.minRiderPayout;
   const maxPayout         = config.rider?.maxPayout ?? 0;

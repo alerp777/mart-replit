@@ -4,7 +4,7 @@ import { apiFetch } from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { CARD, BTN_PRIMARY, BTN_SECONDARY, errMsg } from "../lib/ui";
-import { useCurrency } from "../lib/useConfig";
+import { useCurrency, usePlatformConfig, formatDateTz } from "../lib/useConfig";
 
 type Participation = {
   id: string;
@@ -44,13 +44,14 @@ const THEME_EMOJIS: Record<string, string> = {
   loyalty: "💎", weekend: "📅", newuser: "⭐", cashback: "💰",
 };
 
-function CampaignCard({ campaign, onJoin, onWithdraw, joining, withdrawing, currencySymbol }: {
+function CampaignCard({ campaign, onJoin, onWithdraw, joining, withdrawing, currencySymbol, tz }: {
   campaign: Campaign;
   onJoin: (id: string) => void;
   onWithdraw: (participationId: string) => void;
   joining: boolean;
   withdrawing: boolean;
   currencySymbol: string;
+  tz: string;
 }) {
   const endDate = new Date(campaign.endDate);
   const now = new Date();
@@ -100,7 +101,7 @@ function CampaignCard({ campaign, onJoin, onWithdraw, joining, withdrawing, curr
       </div>
 
       <p className="text-xs text-gray-400">
-        {new Date(campaign.startDate).toLocaleDateString()} — {new Date(campaign.endDate).toLocaleDateString()}
+        {formatDateTz(campaign.startDate, { day: "numeric", month: "short", year: "numeric" }, tz)} — {formatDateTz(campaign.endDate, { day: "numeric", month: "short", year: "numeric" }, tz)}
       </p>
 
       {participation ? (
@@ -139,6 +140,8 @@ function CampaignCard({ campaign, onJoin, onWithdraw, joining, withdrawing, curr
 export default function Campaigns() {
   const qc = useQueryClient();
   const { symbol: currencySymbol } = useCurrency();
+  const { config } = usePlatformConfig();
+  const tz = config.regional?.timezone ?? "Asia/Karachi";
   const [toast, setToast] = useState("");
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
@@ -248,6 +251,7 @@ export default function Campaigns() {
                       joining={false}
                       withdrawing={withdrawingId === campaign.participation?.id}
                       currencySymbol={currencySymbol}
+                      tz={tz}
                     />
                   ))}
                 </div>
@@ -270,6 +274,7 @@ export default function Campaigns() {
                       joining={joiningId === campaign.id}
                       withdrawing={false}
                       currencySymbol={currencySymbol}
+                      tz={tz}
                     />
                   ))}
                 </div>
