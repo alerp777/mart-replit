@@ -1,0 +1,313 @@
+import { db } from "@workspace/db";
+import { liveLocationsTable } from "@workspace/db/schema";
+import { count, eq, and, gte, sql } from "drizzle-orm";
+import { getCachedSettings } from "../routes/admin-shared.js";
+import { sendAdminAlert } from "./email.js";
+
+/* ══════════════════════════════════════════════════════════════════════════
+   healthAlertMonitor.ts
+   Background health-check service that runs on a configurable interval and
+   sends email + Slack alerts when critical issues are detected.
+
+   Enabled/disabled via platform setting  health_monitor_enabled = "on"/"off".
+   Safe default is "off" (opt-in). Enable in Admin → Settings → health_monitor.
+
+   Deduplication: tracks per-issue "last alerted" timestamps so the same
+   issue doesn't flood the channel. Re-alerts only after the snooze period
+   (health_monitor_snooze_min, default 60 min).
+══════════════════════════════════════════════════════════════════════════ */
+
+interface HealthIssue {
+  key: string;
+  level: "error" | "warning";
+  message: string;
+}
+
+const lastAlertMs = new Map<string, number>();
+let monitorTimer: ReturnType<typeof setInterval> | null = null;
+
+async function runHealthChecks(): Promise<HealthIssue[]> {
+  const s = await getCachedSettings();
+  const now = new Date();
+  const issues: HealthIssue[] = [];
+
+  /* ── Database connectivity ── */
+  let dbOk = true;
+  try {
+    await db.execute(sql`SELECT 1`);
+  } catch {
+    dbOk = false;
+  }
+  if (!dbOk) {
+    issues.push({
+      key: "db_down",
+      level: "error",
+      message: "Database connection failed — the server cannot reach PostgreSQL",
+    });
+  }
+
+  /* ── Content moderation config ── */
+  const rawPatterns = s["moderation_custom_patterns"] ?? "";
+  if (rawPatterns) {
+    let valid = true;
+    try {
+      const parsed = JSON.parse(rawPatterns);
+      if (!Array.isArray(parsed)) valid = false;
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      issues.push({
+        key: "malformed_patterns",
+        level: "error",
+        message:
+          "Content moderation: custom patterns JSON is malformed — all custom rules are inactive",
+      });
+    }
+  }
+
+  /* ── GPS tracking ── */
+  if ((s["feature_live_tracking"] ?? "on") === "off") {
+    issues.push({
+      key: "live_tracking_off",
+      level: "warning",
+      message: "Live GPS tracking is disabled — rider positions will not update",
+    });
+  } else {
+    /* Check for stale GPS pings — more than half of live riders haven't pinged */
+    try {
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+      const [[liveRow], [recentRow]] = await Promise.all([
+        db.select({ c: count() }).from(liveLocationsTable).where(eq(liveLocationsTable.role, "rider")),
+        db.select({ c: count() }).from(liveLocationsTable).where(
+          and(eq(liveLocationsTable.role, "rider"), gte(liveLocationsTable.updatedAt, fiveMinAgo)),
+        ),
+      ]);
+      const liveTotal = Number(liveRow?.c ?? 0);
+      const recentTotal = Number(recentRow?.c ?? 0);
+      const stale = liveTotal - recentTotal;
+      if (liveTotal >= 5 && stale > liveTotal / 2) {
+        issues.push({
+          key: "gps_stale_majority",
+          level: "warning",
+          message: `GPS degraded: ${stale} of ${liveTotal} live riders have not pinged in the last 5 minutes`,
+        });
+      }
+    } catch {
+      /* Non-fatal — GPS table query failure shouldn't stop other checks */
+    }
+  }
+
+  /* ── Maintenance mode ── */
+  if ((s["app_status"] ?? "active") === "maintenance") {
+    issues.push({
+      key: "maintenance_mode",
+      level: "warning",
+      message: "App is in maintenance mode — customers cannot access the platform",
+    });
+  }
+
+  /* ── SOS feature disabled ── */
+  if ((s["feature_sos"] ?? "on") === "off") {
+    issues.push({
+      key: "sos_disabled",
+      level: "warning",
+      message: "SOS alerts feature is disabled — riders/customers cannot send emergency alerts",
+    });
+  }
+
+  return issues;
+}
+
+async function sendSlackAlert(
+  webhookUrl: string,
+  issues: HealthIssue[],
+  appName: string,
+): Promise<void> {
+  const errors = issues.filter((i) => i.level === "error");
+  const warnings = issues.filter((i) => i.level === "warning");
+  const parts = [
+    errors.length > 0 ? `${errors.length} error${errors.length > 1 ? "s" : ""}` : "",
+    warnings.length > 0 ? `${warnings.length} warning${warnings.length > 1 ? "s" : ""}` : "",
+  ].filter(Boolean);
+  const summary = parts.join(", ");
+
+  const bulletList = issues
+    .map((i) => `${i.level === "error" ? "🔴" : "🟡"} ${i.message}`)
+    .join("\n");
+
+  const payload = {
+    text: `⚠️ ${appName} Health Alert — ${summary} detected`,
+    blocks: [
+      {
+        type: "header",
+        text: { type: "plain_text", text: `⚠️ ${appName} Health Alert`, emoji: true },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${summary} detected* at ${new Date().toUTCString()}\n\n${bulletList}`,
+        },
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "Sent by the AJKMart health monitor. Log in to the admin panel to investigate.",
+          },
+        ],
+      },
+    ],
+  };
+
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      console.warn(`[health-monitor] Slack webhook returned HTTP ${resp.status}`);
+    } else {
+      console.log(`[health-monitor] Slack alert sent (${issues.length} issue(s))`);
+    }
+  } catch (err: any) {
+    console.warn("[health-monitor] Slack webhook fetch failed:", err.message);
+  }
+}
+
+async function runMonitorCycle(): Promise<void> {
+  try {
+    const s = await getCachedSettings();
+    const snoozeMin = Math.max(1, parseInt(s["health_monitor_snooze_min"] ?? "60", 10));
+    const snoozeMs = snoozeMin * 60 * 1000;
+    const appName = s["app_name"] ?? "AJKMart";
+    const slackWebhook = s["health_alert_slack_webhook"]?.trim() ?? "";
+
+    const allIssues = await runHealthChecks();
+
+    /* Only send alerts for error-level issues (warnings shown on dashboard only) */
+    const alertableIssues = allIssues.filter((i) => i.level === "error");
+
+    /* Clear resolved issues from snooze tracking */
+    const activeKeys = new Set(alertableIssues.map((i) => i.key));
+    for (const key of lastAlertMs.keys()) {
+      if (!activeKeys.has(key)) lastAlertMs.delete(key);
+    }
+
+    /* Determine which issues need alerting now (new or past snooze) */
+    const now = Date.now();
+    const toAlert: HealthIssue[] = [];
+    for (const issue of alertableIssues) {
+      const lastSent = lastAlertMs.get(issue.key) ?? 0;
+      if (now - lastSent >= snoozeMs) {
+        toAlert.push(issue);
+        lastAlertMs.set(issue.key, now);
+      }
+    }
+
+    if (toAlert.length === 0) return;
+
+    const issueWord = toAlert.length > 1 ? "issues" : "issue";
+    const subject = `Health Alert: ${toAlert.length} critical ${issueWord} detected`;
+
+    const adminUrl =
+      s["admin_base_url"]?.replace(/\/$/, "") || s["app_base_url"]?.replace(/\/$/, "") || "";
+    const dashboardLink = `${adminUrl}/admin/health-dashboard`;
+
+    const htmlBody = `
+      <h3 style="color:#dc2626;margin:0 0 12px;">⚠️ Critical System Issue${toAlert.length > 1 ? "s" : ""} Detected</h3>
+      <p style="color:#374151;margin:0 0 16px;">
+        The <strong>${appName}</strong> health monitor detected the following critical
+        ${issueWord} at <strong>${new Date().toUTCString()}</strong>:
+      </p>
+      <ul style="padding-left:20px;margin:0 0 20px;">
+        ${toAlert.map((i) => `<li style="margin:8px 0;color:#111827;">${i.message}</li>`).join("")}
+      </ul>
+      ${
+        dashboardLink
+          ? `<p style="margin:0 0 16px;">
+              <a href="${dashboardLink}"
+                 style="background:#1e40af;color:#fff;padding:10px 18px;border-radius:6px;
+                        text-decoration:none;font-size:14px;font-weight:600;display:inline-block;">
+                View Health Dashboard →
+              </a>
+            </p>`
+          : ""
+      }
+      <p style="color:#6b7280;font-size:12px;margin:0;">
+        This alert will not repeat for ${snoozeMin} minute${snoozeMin === 1 ? "" : "s"} unless the issue persists.
+      </p>
+    `;
+
+    /* Email */
+    const emailResult = await sendAdminAlert(
+      "health_critical",
+      subject,
+      htmlBody,
+      { ...s, email_alert_health_critical: s["email_alert_health_critical"] ?? "on" },
+    );
+    if (emailResult.sent) {
+      console.log(`[health-monitor] Email alert sent: "${subject}"`);
+    } else if (emailResult.reason && !emailResult.reason.includes("disabled")) {
+      console.warn(`[health-monitor] Email alert skipped: ${emailResult.reason}`);
+    }
+
+    /* Slack */
+    if (slackWebhook) {
+      await sendSlackAlert(slackWebhook, toAlert, appName);
+    }
+  } catch (err: any) {
+    console.warn("[health-monitor] Monitor cycle error:", err.message);
+  }
+}
+
+export function startHealthMonitor(): void {
+  if (monitorTimer) {
+    clearInterval(monitorTimer);
+    monitorTimer = null;
+  }
+
+  /* Defer first check by 30 s to let the server warm up after startup */
+  const initialDelay = 30_000;
+
+  const scheduleLoop = async () => {
+    try {
+      const s = await getCachedSettings();
+
+      if ((s["health_monitor_enabled"] ?? "off") !== "on") {
+        console.log(
+          "[health-monitor] Disabled (health_monitor_enabled=off). " +
+          "Enable in Admin → Settings → health_monitor to receive alerts.",
+        );
+        return;
+      }
+
+      const intervalMin = Math.max(1, parseInt(s["health_monitor_interval_min"] ?? "5", 10));
+      const intervalMs = intervalMin * 60 * 1000;
+      console.log(`[health-monitor] Started — checking every ${intervalMin} min`);
+
+      await runMonitorCycle();
+
+      monitorTimer = setInterval(async () => {
+        try {
+          const cs = await getCachedSettings();
+          if ((cs["health_monitor_enabled"] ?? "off") !== "on") {
+            if (monitorTimer) { clearInterval(monitorTimer); monitorTimer = null; }
+            console.log("[health-monitor] Disabled mid-run — interval stopped.");
+            return;
+          }
+          await runMonitorCycle();
+        } catch (e: any) {
+          console.warn("[health-monitor] Interval error:", e.message);
+        }
+      }, intervalMs);
+    } catch (err: any) {
+      console.warn("[health-monitor] Startup failed:", err.message);
+    }
+  };
+
+  setTimeout(scheduleLoop, initialDelay);
+}

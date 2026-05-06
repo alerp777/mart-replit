@@ -22,6 +22,7 @@ import {
 import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.service.js";
 import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
 import { ensureErrorResolutionTables } from "./routes/error-reports.js";
+import { startHealthMonitor } from "./services/healthAlertMonitor.js";
 import router from "./routes/index.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 
@@ -130,6 +131,13 @@ export async function runStartupTasks(): Promise<void> {
     }
   } catch (err) {
     console.error("[startup] platform settings seed failed (continuing):", err);
+  }
+  // Start background health monitor (opt-in via health_monitor_enabled=on in platform settings).
+  // Deferred 30 s inside startHealthMonitor so the server finishes warming up first.
+  try {
+    startHealthMonitor();
+  } catch (err) {
+    console.error("[startup] health monitor failed to start (continuing):", err);
   }
 }
 

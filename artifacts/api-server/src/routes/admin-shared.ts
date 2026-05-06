@@ -385,6 +385,14 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultPlatformSetting[] = [
   { key: "pagination_products_max",     value: "100", label: "Products Per Page (Max)",      category: "pagination" },
   { key: "pagination_trending_limit",   value: "10",  label: "Trending Searches Shown",      category: "pagination" },
   { key: "pagination_flash_deals",      value: "8",   label: "Flash Deals Per Page",         category: "pagination" },
+
+  /* ── HEALTH MONITOR ──────────────────────────────────────────────────── */
+  { key: "health_monitor_enabled",       value: "off", label: "Enable Health Alert Monitor",   category: "health_monitor" },
+  { key: "health_monitor_interval_min",  value: "5",   label: "Check Interval (min)",          category: "health_monitor" },
+  { key: "health_monitor_snooze_min",    value: "60",  label: "Re-alert Snooze (min)",         category: "health_monitor" },
+  { key: "health_alert_slack_webhook",   value: "",    label: "Slack Webhook URL",             category: "health_monitor" },
+  { key: "email_alert_health_critical",  value: "on",  label: "Email: Critical Health Alerts", category: "health_monitor" },
+  { key: "smtp_admin_alert_email",       value: "",    label: "Admin Alert Email Recipient",   category: "health_monitor" },
 ];
 export const ADMIN_TOKEN_TTL_HRS = 24;
 export const ADMIN_MAX_ATTEMPTS = 5;

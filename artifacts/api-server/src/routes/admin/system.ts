@@ -2939,6 +2939,14 @@ router.get("/health-dashboard", async (_req, res) => {
     features,
     maintenanceMode,
     issues,
+    alertConfig: {
+      monitorEnabled:   (s["health_monitor_enabled"]    ?? "off") === "on",
+      intervalMin:      parseInt(s["health_monitor_interval_min"] ?? "5",  10),
+      snoozeMin:        parseInt(s["health_monitor_snooze_min"]   ?? "60", 10),
+      emailConfigured:  (s["integration_email"] ?? "off") === "on" && Boolean(s["smtp_admin_alert_email"]?.trim()),
+      slackConfigured:  Boolean(s["health_alert_slack_webhook"]?.trim()),
+      alertEmail:       s["smtp_admin_alert_email"]?.trim() ?? "",
+    },
   });
 });
 

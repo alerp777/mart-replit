@@ -41,6 +41,7 @@ PostgreSQL is the chosen database, with schema managed by Drizzle ORM. Drizzle K
 -   **Expo for Customer App**: Enables a single codebase for iOS/Android/Web, balancing native capabilities with web compatibility.
 -   **Admin-Driven Configuration**: Most business logic and feature toggles are controllable via the admin panel, reducing the need for code redeploys.
 -   **Manual Payment Verification**: Aligns with local payment habits and avoids initial gateway fees by supporting bank transfers with admin verification.
+-   **Health Alert Monitor**: Background `setInterval` service (`healthAlertMonitor.ts`) runs health checks and sends email + Slack alerts for critical issues. Opt-in via `health_monitor_enabled=on` in platform settings. Deduplicates alerts using in-memory snooze tracking. Alert config visible on the Health Dashboard page (`/admin/health-dashboard`).
 
 ## Development Setup
 

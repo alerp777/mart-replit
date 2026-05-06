@@ -272,7 +272,8 @@ export type AdminAlertType =
   | "low_balance"
   | "daily_summary"
   | "weekly_report"
-  | "account_restriction";
+  | "account_restriction"
+  | "health_critical";
 
 export async function sendAdminAlert(
   alertType: AdminAlertType,

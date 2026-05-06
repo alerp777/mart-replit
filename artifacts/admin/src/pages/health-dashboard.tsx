@@ -3,8 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity, RefreshCw, Server, Satellite, ShieldCheck,
   ToggleLeft, ToggleRight, AlertTriangle, CheckCircle2,
-  Info, Wifi, WifiOff, Cpu, Database, Clock,
+  Info, Cpu, Clock,
   Navigation, Eye, EyeOff, MessageSquare, Zap,
+  Bell, BellOff, Mail, Slack,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { Card, CardContent } from "@/components/ui/card";
@@ -112,6 +113,19 @@ function SkeletonBlock({ className = "" }: { className?: string }) {
   );
 }
 
+/* ── alert channel status badge ── */
+function ChannelBadge({ configured, label }: { configured: boolean; label: string }) {
+  return configured ? (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-medium">
+      <CheckCircle2 size={11} /> {label} connected
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-700/60 text-slate-500 text-xs font-medium border border-slate-600/40">
+      {label} not configured
+    </span>
+  );
+}
+
 /* ── main page ── */
 export default function HealthDashboard() {
   const qc = useQueryClient();
@@ -125,6 +139,7 @@ export default function HealthDashboard() {
   const hasIssues = d?.issues?.length > 0;
   const errorCount = (d?.issues ?? []).filter((i: any) => i.level === "error").length;
   const warnCount = (d?.issues ?? []).filter((i: any) => i.level === "warning").length;
+  const alertCfg = d?.alertConfig;
 
   return (
     <div className="space-y-6 pb-10">
@@ -386,6 +401,95 @@ export default function HealthDashboard() {
           )}
         </Section>
       </div>
+
+      {/* ── Alert Notifications ── */}
+      <Section title="Alert Notifications" icon={Bell}>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => <SkeletonBlock key={i} className="h-9" />)}
+          </div>
+        ) : (
+          <>
+            {/* Monitor on/off banner */}
+            {alertCfg && !alertCfg.monitorEnabled && (
+              <div className="mb-4 px-4 py-3 rounded-xl border border-slate-600/40 bg-slate-700/30 flex items-start gap-3">
+                <BellOff size={16} className="text-slate-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm text-slate-300 font-medium">Health monitor is disabled</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Enable it in Admin Settings → <code className="bg-slate-700 px-1 py-0.5 rounded text-slate-400">health_monitor_enabled = on</code> to start receiving alerts automatically.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {alertCfg?.monitorEnabled && (
+              <div className="mb-4 px-4 py-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center gap-3">
+                <Bell size={16} className="text-emerald-400 shrink-0" />
+                <div>
+                  <p className="text-sm text-emerald-300 font-medium">Health monitor is active</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Checks every {alertCfg?.intervalMin ?? 5} min · Re-alerts after {alertCfg?.snoozeMin ?? 60} min snooze
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Email channel */}
+              <div className="rounded-xl border border-slate-700/50 bg-slate-800/40 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Mail size={15} className="text-slate-400" />
+                  <span className="text-sm font-medium text-slate-300">Email Alerts</span>
+                </div>
+                <div className="space-y-2">
+                  <ChannelBadge configured={alertCfg?.emailConfigured ?? false} label="Email" />
+                  {alertCfg?.emailConfigured && alertCfg?.alertEmail && (
+                    <p className="text-xs text-slate-500 truncate" title={alertCfg.alertEmail}>
+                      → {alertCfg.alertEmail}
+                    </p>
+                  )}
+                  {!alertCfg?.emailConfigured && (
+                    <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                      Set <code className="bg-slate-700 px-1 rounded text-slate-400">integration_email=on</code> and <code className="bg-slate-700 px-1 rounded text-slate-400">smtp_admin_alert_email</code> in Settings to enable.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Slack channel */}
+              <div className="rounded-xl border border-slate-700/50 bg-slate-800/40 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Slack size={15} className="text-slate-400" />
+                  <span className="text-sm font-medium text-slate-300">Slack Alerts</span>
+                </div>
+                <div className="space-y-2">
+                  <ChannelBadge configured={alertCfg?.slackConfigured ?? false} label="Slack" />
+                  {!alertCfg?.slackConfigured && (
+                    <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                      Set <code className="bg-slate-700 px-1 rounded text-slate-400">health_alert_slack_webhook</code> to an incoming webhook URL in Settings to enable.
+                    </p>
+                  )}
+                  {alertCfg?.slackConfigured && (
+                    <p className="text-xs text-slate-500 mt-1">Incoming webhook configured</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-700/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs text-slate-500">
+                Alerts fire for <strong className="text-slate-400">critical errors</strong> only (DB down, malformed moderation config). Warnings are shown on this dashboard but don't trigger notifications.
+              </p>
+              <Link href="/settings">
+                <Button variant="outline" size="sm" className="border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap text-xs">
+                  Configure in Settings →
+                </Button>
+              </Link>
+            </div>
+          </>
+        )}
+      </Section>
 
       {/* auto-refresh notice */}
       <p className="text-center text-xs text-slate-600">
