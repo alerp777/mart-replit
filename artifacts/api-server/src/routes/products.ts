@@ -277,15 +277,12 @@ router.get("/", async (req, res) => {
   const offset = (page - 1) * perPage;
 
   if (type && typeof type === "string") {
-    try {
-      const s = await getPlatformSettings();
-      const featureKey = `feature_${type}`;
-      const enabled = (s[featureKey] ?? "on") === "on";
-      if (!enabled) {
-        sendError(res, `${type.charAt(0).toUpperCase() + type.slice(1)} service is currently disabled`, 503, "یہ سروس فی الحال بند ہے۔");
-        return;
-      }
-    } catch {}
+    const featureKey = `feature_${type}`;
+    const enabled = (ps2[featureKey] ?? "on") === "on";
+    if (!enabled) {
+      sendError(res, `${type.charAt(0).toUpperCase() + type.slice(1)} service is currently disabled`, 503, "یہ سروس فی الحال بند ہے۔");
+      return;
+    }
   }
 
   const conditions: SQL[] = [

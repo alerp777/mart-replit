@@ -200,7 +200,9 @@ export function getModerationConfigFromSettings(settings: Record<string, string>
       if (Array.isArray(parsed)) {
         customPatterns = parsed.filter((p: any) => p.pattern && typeof p.pattern === "string");
       }
-    } catch {}
+    } catch (err) {
+      console.warn("[content-moderation] Failed to parse custom patterns from settings — all custom rules disabled:", err instanceof Error ? err.message : String(err));
+    }
   }
 
   return {

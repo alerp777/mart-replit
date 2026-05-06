@@ -342,14 +342,18 @@ async function processLocationUpdate(opts: {
             speed:   opts.speed   !== undefined && opts.speed   !== null ? String(opts.speed)   : null,
           });
         }
-      } catch {}
+      } catch (err) {
+        console.warn("[location-history] Failed to save location history point:", err instanceof Error ? err.message : String(err));
+      }
 
       /* Always update lastActive — regardless of whether a history point was saved */
       try {
         await db.update(usersTable)
           .set({ lastActive: now, updatedAt: now })
           .where(eq(usersTable.id, userId));
-      } catch {}
+      } catch (err) {
+        console.warn("[location-history] Failed to update lastActive for user", userId, ":", err instanceof Error ? err.message : String(err));
+      }
     })();
   }
 
