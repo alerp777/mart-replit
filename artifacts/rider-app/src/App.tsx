@@ -316,12 +316,19 @@ function AppRoutes() {
     return <MaintenanceScreen message={config.content.maintenanceMsg} appName={config.platform.appName} />;
   }
 
+  const isLimited = config.platform.appStatus === "limited";
+
   const userRoles = typeof user.roles === "string" ? user.roles : "";
   const isVanDriver = userRoles.includes("van_driver");
 
   if (isVanDriver) {
     return (
       <div className="max-w-md mx-auto relative flex flex-col min-h-screen">
+        {isLimited && (
+          <div className="fixed top-0 inset-x-0 z-50 bg-orange-400 text-white text-center py-2 px-4 text-xs font-bold shadow pointer-events-none">
+            ⚠️ Limited service — some features may be temporarily unavailable
+          </div>
+        )}
         {refreshFailToast && (
           <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg pointer-events-none">
             {/* U1: At minimum the dynamic data piece is i18n-aware via T("offline"); the
@@ -354,6 +361,11 @@ function AppRoutes() {
 
   return (
     <div className="max-w-md mx-auto relative flex flex-col min-h-screen">
+      {isLimited && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-orange-400 text-white text-center py-2 px-4 text-xs font-bold shadow pointer-events-none">
+          ⚠️ Limited service — some features may be temporarily unavailable
+        </div>
+      )}
       {refreshFailToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg pointer-events-none">
           Connection issue — profile sync failed

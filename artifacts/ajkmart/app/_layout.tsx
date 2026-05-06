@@ -754,6 +754,17 @@ function RootLayoutNav() {
 
   return (
     <>
+      {config.appStatus === "limited" && (
+        <View style={{
+          position: "absolute", top: 0, left: 0, right: 0, zIndex: 1000,
+          backgroundColor: "#F59E0B", paddingTop: 44, paddingBottom: 8,
+          paddingHorizontal: 16, alignItems: "center",
+        }}>
+          <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+            ⚠️ Limited service — some features may be temporarily unavailable
+          </Text>
+        </View>
+      )}
       <AuthGuard />
       <ImpersonationHandler />
       <MagicLinkHandler />

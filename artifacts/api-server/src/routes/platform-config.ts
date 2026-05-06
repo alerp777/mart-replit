@@ -124,6 +124,8 @@ router.get("/", async (req, res) => {
       businessAddress:      s["business_address"]   ?? "Muzaffarabad, AJK, Pakistan",
       socialFacebook:       s["social_facebook"]    ?? "",
       socialInstagram:      s["social_instagram"]   ?? "",
+      currencySymbol:       s["currency_symbol"] ?? s["regional_currency_symbol"] ?? "Rs.",
+      currencyCode:         s["currency_code"] ?? "PKR",
     },
     orderRules: {
       minOrderAmount:       parseFloat(s["min_order_amount"]           ?? "100"),

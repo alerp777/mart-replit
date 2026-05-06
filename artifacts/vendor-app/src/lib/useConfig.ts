@@ -20,7 +20,7 @@ export interface PlatformConfig {
     appName: string;
     appTagline: string;
     appVersion: string;
-    appStatus: "active" | "maintenance";
+    appStatus: "active" | "maintenance" | "limited";
     supportPhone: string;
     supportEmail: string;
     supportHours: string;
@@ -158,6 +158,17 @@ export interface PlatformConfig {
     currencySymbol?: string;
     countryCode?: string;
   };
+  branding?: {
+    colorMart?: string;
+    colorFood?: string;
+    colorRides?: string;
+    colorPharmacy?: string;
+    colorParcel?: string;
+    colorVan?: string;
+    mapCenterLat?: number;
+    mapCenterLng?: number;
+    mapCenterLabel?: string;
+  };
   compliance?: {
     termsVersion?: string;
     privacyVersion?: string;
@@ -248,4 +259,42 @@ export function useCurrency() {
     symbol: config.platform.currencySymbol ?? config.currencySymbol ?? config.regional?.currencySymbol ?? "Rs.",
     code:   config.platform.currencyCode   ?? config.currencyCode   ?? "PKR",
   };
+}
+
+export function buildPhoneValidator(config: PlatformConfig): (phone: string) => boolean {
+  const pattern = config.regional?.phoneFormat;
+  if (!pattern) return () => true;
+  try {
+    const re = new RegExp(pattern);
+    return (phone: string) => re.test(phone.trim());
+  } catch {
+    return () => true;
+  }
+}
+
+export function usePhoneValidator(): (phone: string) => boolean {
+  const { config } = usePlatformConfig();
+  return buildPhoneValidator(config);
+}
+
+export function useDateFormatter(): (date: string | Date | null | undefined, options?: Intl.DateTimeFormatOptions) => string {
+  const { config } = usePlatformConfig();
+  const tz = config.regional?.timezone;
+  return (date, options) => formatDateTz(date, options, tz);
+}
+
+export function formatDateTz(
+  date: string | Date | null | undefined,
+  options?: Intl.DateTimeFormatOptions,
+  timezone?: string,
+): string {
+  if (!date) return "";
+  try {
+    const tz = timezone || "Asia/Karachi";
+    return new Intl.DateTimeFormat("en-PK", { timeZone: tz, ...options }).format(
+      typeof date === "string" ? new Date(date) : date,
+    );
+  } catch {
+    return new Date(date as string).toLocaleString();
+  }
 }

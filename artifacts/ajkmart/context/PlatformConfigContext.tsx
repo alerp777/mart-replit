@@ -7,7 +7,7 @@ const API_DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
 const CACHE_MS = 30_000;
 
 export interface PlatformConfig {
-  appStatus: "active" | "maintenance";
+  appStatus: "active" | "maintenance" | "limited";
   features: {
     mart: boolean;
     food: boolean;
@@ -435,7 +435,11 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
       if (!res.ok) throw new Error("config fetch failed");
       const raw = unwrapApiResponse(await res.json()) as Record<string, any>;
       const parsed: PlatformConfig = {
-        appStatus: raw.platform?.appStatus === "maintenance" ? "maintenance" : "active",
+        appStatus: raw.platform?.appStatus === "maintenance"
+          ? "maintenance"
+          : raw.platform?.appStatus === "limited"
+          ? "limited"
+          : "active",
         features: {
           mart:         raw.features?.mart         ?? true,
           food:         raw.features?.food         ?? true,

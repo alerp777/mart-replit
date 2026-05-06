@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
-import { usePlatformConfig, useCurrency } from "../lib/useConfig";
+import { usePlatformConfig, useCurrency, useDateFormatter } from "../lib/useConfig";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, INPUT, BTN_PRIMARY, LABEL, errMsg } from "../lib/ui";
 import { useLanguage } from "../lib/useLanguage";
@@ -16,16 +16,14 @@ const CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jh
 const BANKS  = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
 const BIZ_TYPES = ["Sole Proprietorship","Partnership","Private Limited","Trust / NGO","Individual / Freelancer"];
 
-function fdLong(d: string | Date) {
-  return new Date(d).toLocaleDateString("en-PK", { day:"numeric", month:"long", year:"numeric" });
-}
-
 type EditSection = "personal" | "bank" | null;
 
 export default function Profile() {
   const { user, logout, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
   const { symbol: currencySymbol } = useCurrency();
+  const formatDate = useDateFormatter();
+  const fdLong = (d: string | Date) => formatDate(d, { day: "numeric", month: "long", year: "numeric" });
 
   const { data: notifData } = useQuery({
     queryKey: ["vendor-notifs-count"],

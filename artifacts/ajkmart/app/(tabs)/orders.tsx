@@ -138,19 +138,22 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
 }) {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const { config } = usePlatformConfig();
   const [itemsExpanded, setItemsExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
   const cfg = ORDER_STATUS[order.status] || ORDER_STATUS["pending"]!;
   const isFood = order.type === "food";
   const isPharmacy = order.type === "pharmacy";
   const isParcel = order.type === "parcel";
+  const b = config.branding;
+  const brandBg = (hex: string) => hex + "26";
   const orderChip = isFood
-    ? { bg: C.amberSoft, color: C.amber, icon: "restaurant-outline" as keyof typeof Ionicons.glyphMap, label: T("food") }
+    ? { bg: b?.colorFood ? brandBg(b.colorFood) : C.amberSoft, color: b?.colorFood ?? C.amber, icon: "restaurant-outline" as keyof typeof Ionicons.glyphMap, label: T("food") }
     : isPharmacy
-    ? { bg: C.emeraldSoft, color: C.emerald, icon: "medical-outline" as keyof typeof Ionicons.glyphMap, label: T("pharmacy") }
+    ? { bg: b?.colorPharmacy ? brandBg(b.colorPharmacy) : C.emeraldSoft, color: b?.colorPharmacy ?? C.emerald, icon: "medical-outline" as keyof typeof Ionicons.glyphMap, label: T("pharmacy") }
     : isParcel
-    ? { bg: C.orangeSoft, color: C.gold, icon: "cube-outline" as keyof typeof Ionicons.glyphMap, label: T("parcel") }
-    : { bg: C.blueSoft, color: C.brandBlue, icon: "storefront-outline" as keyof typeof Ionicons.glyphMap, label: T("mart") };
+    ? { bg: b?.colorParcel ? brandBg(b.colorParcel) : C.orangeSoft, color: b?.colorParcel ?? C.gold, icon: "cube-outline" as keyof typeof Ionicons.glyphMap, label: T("parcel") }
+    : { bg: b?.colorMart ? brandBg(b.colorMart) : C.blueSoft, color: b?.colorMart ?? C.brandBlue, icon: "storefront-outline" as keyof typeof Ionicons.glyphMap, label: T("mart") };
   const isDelivered = order.status === "delivered";
   const isCancelled = order.status === "cancelled";
   const isActive = !["delivered", "cancelled"].includes(order.status);

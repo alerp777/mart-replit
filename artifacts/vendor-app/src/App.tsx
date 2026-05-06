@@ -203,6 +203,12 @@ function AppRoutes() {
           ⚠️ {config.platform.appName} is in maintenance mode. Full screen in {Math.floor(maintenanceSecs / 60)}:{String(maintenanceSecs % 60).padStart(2, "0")}
         </div>
       )}
+      {/* ── Limited-service banner: non-blocking strip shown when app_status = "limited" ── */}
+      {config.platform.appStatus === "limited" && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-orange-400 text-white text-center py-2 px-4 text-xs font-bold shadow">
+          ⚠️ Limited service — some features may be temporarily unavailable
+        </div>
+      )}
 
       {/* ── FCM foreground notification banner ── */}
       {fcmNotif && (

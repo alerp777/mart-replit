@@ -107,13 +107,27 @@ function RideRouteMap({
   polyline?: Array<{ lat: number; lng: number }>;
 }) {
   const tile = useRiderTileConfig();
+  const { config } = usePlatformConfig();
   const [open, setOpen] = useState(false);
+
+  /* Fallback map center from admin branding config — default Muzaffarabad, AJK */
+  const fallbackCenter: [number, number] = [
+    config.branding?.mapCenterLat ?? 34.37,
+    config.branding?.mapCenterLng ?? 73.47,
+  ];
+
+  const isValidCoord = (lat: number, lng: number) =>
+    Number.isFinite(lat) && Number.isFinite(lng) && !(Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001);
 
   const positions: [number, number][] = [
     [pickupLat, pickupLng],
     [dropLat, dropLng],
     ...(riderLat != null && riderLng != null ? [[riderLat, riderLng] as [number, number]] : []),
   ];
+
+  const mapCenter: [number, number] = isValidCoord(pickupLat, pickupLng)
+    ? [pickupLat, pickupLng]
+    : fallbackCenter;
 
   const polyPositions: [number, number][] = polyline
     ? polyline.map(p => [p.lat, p.lng])
@@ -143,7 +157,7 @@ function RideRouteMap({
       {open && (
         <div style={{ height: 240 }}>
           <MapContainer
-            center={positions[0]}
+            center={mapCenter}
             zoom={13}
             style={{ height: "100%", width: "100%" }}
             scrollWheelZoom={false}
