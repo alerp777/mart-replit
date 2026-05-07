@@ -153,7 +153,7 @@ async function main() {
     {
       name:    "api",
       args:    ["--filter", "@workspace/api-server", "dev"],
-      env:     { PORT: apiPort, NODE_ENV: "development" },
+      env:     { PORT: apiPort, NODE_ENV: "development", EXPO_DEV_PORT: ajkPort },
       healthUrl: `http://127.0.0.1:${apiPort}/api/health`,
     },
     {
