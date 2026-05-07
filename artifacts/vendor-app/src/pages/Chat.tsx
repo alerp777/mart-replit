@@ -15,6 +15,19 @@ interface CallSignal { callId: string; callerId?: string; sdp?: RTCSessionDescri
 const STORAGE_KEY = "vendor_quick_replies";
 const MAX_SHORTCUTS = 8;
 
+function loadLocalShortcuts(): string[] | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every(s => typeof s === "string")) {
+        return parsed.slice(0, MAX_SHORTCUTS);
+      }
+    }
+  } catch {}
+  return null;
+}
+
 const SUGGESTED_TEMPLATES: { category: string; icon: string; items: string[] }[] = [
   {
     category: "General",
@@ -67,21 +80,10 @@ const DEFAULT_SHORTCUTS = [
   "Will be ready in 10 mins ⏱",
 ];
 
-function loadShortcuts(): string[] {
+function saveLocalShortcuts(shortcuts: string[]) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.every(s => typeof s === "string")) {
-        return parsed.slice(0, MAX_SHORTCUTS);
-      }
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts.slice(0, MAX_SHORTCUTS)));
   } catch {}
-  return DEFAULT_SHORTCUTS;
-}
-
-function saveShortcuts(shortcuts: string[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts.slice(0, MAX_SHORTCUTS)));
 }
 
 function ShortcutsModal({ shortcuts, onSave, onClose }: { shortcuts: string[]; onSave: (s: string[]) => void; onClose: () => void; }) {
@@ -298,7 +300,7 @@ export default function Chat() {
   const [conversationsError, setConversationsError] = useState(false);
   const [requestsError, setRequestsError]           = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [quickReplies, setQuickReplies] = useState<string[]>(loadShortcuts);
+  const [quickReplies, setQuickReplies] = useState<string[]>(loadLocalShortcuts() ?? DEFAULT_SHORTCUTS);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const showError = (msg: string) => { setErrorToast(msg); setTimeout(() => setErrorToast(null), 4000); };
@@ -309,11 +311,23 @@ export default function Chat() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleSaveShortcuts = (updated: string[]) => {
-    saveShortcuts(updated);
+    saveLocalShortcuts(updated);
     setQuickReplies(updated);
+    api.updateQuickReplies(updated).catch(() => {});
   };
 
   useEffect(() => {
+    api.getQuickReplies().then(d => {
+      if (Array.isArray(d.quickReplies) && d.quickReplies.length > 0) {
+        const fromServer = (d.quickReplies as unknown[])
+          .filter((s): s is string => typeof s === "string")
+          .slice(0, MAX_SHORTCUTS);
+        setQuickReplies(fromServer);
+        saveLocalShortcuts(fromServer);
+      }
+      // Server returned [] (never synced) or non-array → keep current local/default state unchanged
+    }).catch(() => {});
+
     apiFetch("/communication/me/ajk-id").then(d => setAjkId(d.ajkId)).catch((e: unknown) => {
       showError(e instanceof Error ? e.message : "Failed to load your AJK ID");
     });

@@ -115,6 +115,44 @@ router.patch("/profile", validateBody(patchProfileSchema), async (req, res) => {
   sendSuccess(res, formatUser(user));
 });
 
+/* ── GET /vendor/profile/quick-replies ── */
+router.get("/profile/quick-replies", async (req, res) => {
+  const vendorId = req.vendorId!;
+  const [profile] = await db
+    .select({ quickReplies: vendorProfilesTable.quickReplies })
+    .from(vendorProfilesTable)
+    .where(eq(vendorProfilesTable.userId, vendorId));
+  let shortcuts: string[] = [];
+  if (profile?.quickReplies) {
+    try {
+      const parsed = JSON.parse(profile.quickReplies);
+      if (Array.isArray(parsed) && parsed.every(s => typeof s === "string")) {
+        shortcuts = parsed;
+      }
+    } catch {}
+  }
+  sendSuccess(res, { quickReplies: shortcuts });
+});
+
+/* ── PATCH /vendor/profile/quick-replies ── */
+const patchQuickRepliesSchema = z.object({
+  quickReplies: z.array(z.string().max(120)).max(8),
+});
+
+router.patch("/profile/quick-replies", validateBody(patchQuickRepliesSchema), async (req, res) => {
+  const vendorId = req.vendorId!;
+  const { quickReplies } = req.body as { quickReplies: string[] };
+  const serialized = JSON.stringify(quickReplies.slice(0, 8));
+  await db
+    .insert(vendorProfilesTable)
+    .values({ userId: vendorId, quickReplies: serialized })
+    .onConflictDoUpdate({
+      target: vendorProfilesTable.userId,
+      set: { quickReplies: serialized, updatedAt: new Date() },
+    });
+  sendSuccess(res, { quickReplies });
+});
+
 /* ── GET /vendor/store ── */
 router.get("/store", async (req, res) => {
   const user = req.vendorUser!;
