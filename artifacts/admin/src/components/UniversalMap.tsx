@@ -426,7 +426,6 @@ function GoogleMap({ token = "", center, zoom = 12, markers = [], polylines = []
       if (m.onClick) marker.addListener("click", m.onClick);
       return marker;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gmReady, markers]);
 
   /* Sync polylines */
@@ -443,7 +442,6 @@ function GoogleMap({ token = "", center, zoom = 12, markers = [], polylines = []
       strokeWeight: p.weight ?? 2.5,
       strokeOpacity: p.opacity ?? 0.7,
     }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gmReady, polylines]);
 
   if (!token) {

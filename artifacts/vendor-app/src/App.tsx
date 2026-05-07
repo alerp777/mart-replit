@@ -92,16 +92,7 @@ function AppRoutes() {
     if (integ.analytics && integ.analyticsTrackingId) {
       initAnalytics(integ.analyticsPlatform, integ.analyticsTrackingId, integ.analyticsDebug ?? false);
     }
-  }, [config?.integrations?.sentryDsn, config?.integrations?.analyticsTrackingId]);
-
-  /* ── Identify vendor in Sentry/Analytics after login ── */
-  useEffect(() => {
-    if (user) {
-      setSentryUser(String(user.id), user.email);
-      identifyUser(String(user.id));
-      trackEvent("vendor_session_start");
-    }
-  }, [user?.id]);
+  }, [config?.integrations]);
 
   const [, navigate] = useLocation();
 

@@ -6,7 +6,7 @@
  * Backend enforcement lives at /api/admin/system/rbac/* —
  * the UI here is gated by `system.roles.manage` for write actions.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared";
 import {
   Shield, Plus, Save, Trash2, RefreshCw, Search, Lock, Users, KeyRound, Pencil,
@@ -314,7 +314,7 @@ export default function RolesPermissionsPage() {
   useAbortableEffect((signal) => { void reload(signal); }, []);
 
   /* ── Admin assignments ──────────────────────────────────────────── */
-  const loadAdmins = async () => {
+  const loadAdmins = useCallback(async () => {
     setAdminsLoading(true);
     try {
       const res = await fetchAdmin("/admin-accounts");
@@ -342,9 +342,9 @@ export default function RolesPermissionsPage() {
       setAdminsLoading(false);
       setAdminsDataLoaded(true);
     }
-  };
+  }, [toast]);
 
-  useEffect(() => { if (tab === "admins" && !admins.length) void loadAdmins(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tab]);
+  useEffect(() => { if (tab === "admins" && !admins.length) void loadAdmins(); }, [tab, loadAdmins, admins.length]);
 
   const selectAdmin = async (a: AdminAccount) => {
     setActiveAdminId(a.id);

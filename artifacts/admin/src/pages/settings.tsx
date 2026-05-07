@@ -378,7 +378,7 @@ export default function SettingsPage() {
       toast({ title: "Failed to load settings", description: e.message, variant: "destructive" });
     }
     setLoading(false);
-  }, []);
+  }, [toast]);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
@@ -503,18 +503,18 @@ export default function SettingsPage() {
   const activeCfg = TOP10_CONFIG[activeTop10];
   const ActiveIcon = activeCfg.icon;
 
-  const DISPLAY_CAT_OVERRIDE: Record<string,string> = {
+  const DISPLAY_CAT_OVERRIDE = useMemo<Record<string,string>>(() => ({
     vendor_min_payout:        "finance",
     customer_referral_bonus:  "payment",
     customer_signup_bonus:    "payment",
-  };
+  }), []);
 
   /* The 5 sections that always render even with zero DB settings. */
-  const ALWAYS_VISIBLE = new Set<CatKey>(["payment", "integrations", "security", "system", "weather"]);
+  const ALWAYS_VISIBLE = useMemo(() => new Set<CatKey>(["payment", "integrations", "security", "system", "weather"]), []);
 
   const childHasContent = useCallback((cat: CatKey) => {
     return ALWAYS_VISIBLE.has(cat) || (grouped[cat]?.length ?? 0) > 0;
-  }, [grouped]);
+  }, [ALWAYS_VISIBLE, grouped]);
 
   const activeChildrenWithContent = useMemo(
     () => activeCfg.children.filter(childHasContent),
@@ -526,7 +526,7 @@ export default function SettingsPage() {
       (count, child) => count + ((grouped[child]?.length ?? 0) || (ALWAYS_VISIBLE.has(child) ? 1 : 0)),
       0,
     ),
-    [activeChildrenWithContent, grouped],
+    [activeChildrenWithContent, grouped, ALWAYS_VISIBLE],
   );
 
   /* Cross-section search results: match settings by key/label/description, group by Top10. */
@@ -553,7 +553,7 @@ export default function SettingsPage() {
       }
     }
     return results.sort((a, b) => b.score - a.score).slice(0, 12).map(({ score: _s, ...r }) => r);
-  }, [searchQ, settings]);
+  }, [searchQ, settings, DISPLAY_CAT_OVERRIDE]);
 
   const jumpToSetting = useCallback((target: { key: string; cat: string; top10: Top10Key }) => {
     jumpTimersRef.current.forEach(clearTimeout);
@@ -588,7 +588,7 @@ export default function SettingsPage() {
       if (top10) counts[top10] = (counts[top10] || 0) + 1;
     }
     return counts;
-  }, [dirtyKeys, settings]);
+  }, [dirtyKeys, settings, DISPLAY_CAT_OVERRIDE]);
 
   if (loading) {
     return (

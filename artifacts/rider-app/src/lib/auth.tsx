@@ -64,14 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshingRef = useRef(false);
 
-  const clearRefreshTimer = () => {
+  const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
-  };
+  }, []);
 
-  const scheduleProactiveRefresh = (tok: string) => {
+  const scheduleProactiveRefresh = useCallback((tok: string) => {
     clearRefreshTimer();
     const exp = decodeJwtExp(tok);
     if (!exp) return;
@@ -126,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshingRef.current = false;
       }
     }, refreshIn);
-  };
+  }, [clearRefreshTimer]);
 
   useEffect((): (() => void) | void => {
     /* Try sessionStorage first (new approach), fall back to localStorage for existing sessions */
@@ -160,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null);
     }).finally(() => setLoading(false));
     return () => { controller.abort(); clearRefreshTimer(); };
-  }, []);
+  }, [scheduleProactiveRefresh, clearRefreshTimer]);
 
   /* Register module-level logout callback so api.ts can trigger logout directly
      without relying only on the CustomEvent system. Also keep the CustomEvent

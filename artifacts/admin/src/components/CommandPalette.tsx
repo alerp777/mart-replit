@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { fetcher, apiAbsoluteFetchRaw } from "@/lib/api";
@@ -244,7 +244,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   });
 
   /* ── Consume AI suggestedFilters ── */
-  const aiSuggestedFilters: string[] = aiData?.data?.suggestedFilters ?? aiData?.suggestedFilters ?? [];
+  const aiSuggestedFilters = useMemo<string[]>(
+    () => aiData?.data?.suggestedFilters ?? aiData?.suggestedFilters ?? [],
+    [aiData],
+  );
   useEffect(() => {
     if (aiSuggestedFilters.length === 0) return;
     /* Auto-apply first matching status filter from AI suggestion */
@@ -254,7 +257,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     if (suggestedStatus && !activeStatus) {
       setActiveStatus(suggestedStatus);
     }
-  }, [JSON.stringify(aiSuggestedFilters)]);
+  }, [aiSuggestedFilters, activeStatus]);
 
   /* ── Local static search (transliteration + fuzzy) ── */
   const q = query.trim().toLowerCase();
@@ -303,7 +306,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   };
 
   /* Build full item list: AI → static → live */
-  const allItems: CmdItem[] = [
+  const allItems = useMemo<CmdItem[]>(() => [
     ...aiEnrichedItems.map(e => ({ ...e, _aiResult: true } as CmdItem)),
     ...filteredStaticItems
       .filter(e => !aiEnrichedItems.find(a => a.id === e.id))
@@ -316,13 +319,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           ...livePharmacy.map(p => ({ ...p, _pharm: true })),
         ]).map((o): CmdItem => ({ _type: "order", ...o }))
       : []),
-  ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [aiEnrichedItems, filteredStaticItems, showUsers, liveUsers, showRides, filterByStatus, liveRides, showOrders, liveOrders, livePharmacy]);
 
   /* ── Reset selection on list/query change; clear stale cmd result ── */
   useEffect(() => {
     setSelected(0);
     setCmdResult(null);
-  }, [allItems.length, debouncedQ]);
+  }, [allItems, debouncedQ]);
 
   /* ── Reset on open ── */
   useEffect(() => {

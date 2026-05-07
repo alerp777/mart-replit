@@ -84,7 +84,7 @@ export default function SupportChatPage() {
   });
 
   const conversations: Conversation[] = convsData?.conversations ?? [];
-  const messages: ChatMessage[] = msgsData?.messages ?? [];
+  const messages = useMemo<ChatMessage[]>(() => msgsData?.messages ?? [], [msgsData?.messages]);
 
   const filtered = conversations.filter(c =>
     !search || c.userId.toLowerCase().includes(search.toLowerCase()) ||
@@ -100,7 +100,7 @@ export default function SupportChatPage() {
   useEffect(() => {
     if (!selectedUserId) return;
     qc.invalidateQueries({ queryKey: ["admin-support-conversations"] });
-  }, [selectedUserId]);
+  }, [selectedUserId, qc]);
 
   useEffect(() => {
     const origin = window.location.origin;

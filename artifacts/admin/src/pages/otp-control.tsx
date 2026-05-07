@@ -178,7 +178,7 @@ export default function OtpControl() {
       console.warn("[OtpControl] Status load failed:", err);
       toast({ title: "Failed to load OTP status", variant: "destructive" });
     } finally { setStatusLoading(false); }
-  }, []);
+  }, [toast]);
 
   /* ── Load recent audit entries (no-OTP logins only) ── */
   const loadAudit = useCallback(async () => {
@@ -195,7 +195,7 @@ export default function OtpControl() {
       console.warn("[OtpControl] Audit load failed:", err);
       toast({ title: "Failed to load audit log", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally { setAuditLoading(false); }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { loadStatus(); loadAudit(); }, [loadStatus, loadAudit]);
 

@@ -297,7 +297,7 @@ function DynamicTileLayer({ config }: { config: MapConfig | undefined }) {
       setUseFallback(true);
       errorCount.current = 0;
     }
-  }, [useFallback, provider, config?.secondaryProvider, config?.failoverEnabled]);
+  }, [useFallback, config?.failoverEnabled]);
 
   return (
     <TileLayer
@@ -359,7 +359,7 @@ function FitBoundsOnLoad({
       const bounds = L.latLngBounds(points);
       map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
     }
-  }, [pointsHash, defaultLat, defaultLng]);
+  }, [pointsHash, map, points, defaultLat, defaultLng]);
 
   return null;
 }
@@ -415,7 +415,7 @@ function AnimatedMarker({
     };
     animRef.current = requestAnimationFrame(step);
     return () => { if (animRef.current != null) cancelAnimationFrame(animRef.current); };
-  }, [position[0], position[1]]);
+  }, [position]);
 
   return (
     <Marker
@@ -805,7 +805,7 @@ export default function LiveRidersMap() {
     socket.on("order:update", () => { qc.invalidateQueries({ queryKey: ["admin-orders"] }); qc.invalidateQueries({ queryKey: ["admin-orders-enriched"] }); });
 
     return () => { socket.disconnect(); socketRef.current = null; };
-  }, []);
+  }, [qc]);
 
   useEffect(() => {
     setSecAgo(0);

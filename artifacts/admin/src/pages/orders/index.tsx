@@ -178,7 +178,7 @@ export default function Orders() {
     }
   }, [statusFilter, typeFilter, debouncedSearch, dateFrom, dateTo, sortKey, sortDir, toast]);
 
-  const orders: any[] = Array.isArray(data?.orders) ? data.orders : [];
+  const orders = useMemo<any[]>(() => Array.isArray(data?.orders) ? data.orders : [], [data?.orders]);
   const serverTotal: number = typeof data?.total === "number" ? data.total : orders.length;
 
   const liveSelectedOrder = selectedOrder

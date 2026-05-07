@@ -92,7 +92,7 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
       toast({ title: "Failed to load security data", description: "Check network and try again", variant: "destructive" });
     }
     if (!signal.aborted) setLiveLoading(false);
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (secTab === "auth" || secTab === "fraud" || secTab === "admin") {

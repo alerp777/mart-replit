@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -117,7 +117,7 @@ function SessionsTab() {
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load sessions on mount
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetcher("/auth/sessions");
@@ -129,7 +129,7 @@ function SessionsTab() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   // Remove a specific session
   const revokeSession = async (sessionId: string) => {
@@ -159,7 +159,7 @@ function SessionsTab() {
     }
   };
 
-  useEffect(() => { loadSessions(); }, []);
+  useEffect(() => { void loadSessions(); }, [loadSessions]);
   useEffect(() => () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); }, []);
 
   const formatTime = (isoDate: string | null) => {

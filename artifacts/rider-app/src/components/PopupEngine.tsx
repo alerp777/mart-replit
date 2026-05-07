@@ -105,34 +105,9 @@ export function PopupEngine() {
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-    fetchPopups();
-    return () => {
-      if (autoDismissTimer.current) clearTimeout(autoDismissTimer.current);
-    };
-  }, []);
+  const dismissCurrentRef = useRef<(action?: "dismiss" | "click") => void>(() => {});
 
-  const fetchPopups = async () => {
-    try {
-      const url = `${BASE}/popups/active?sessionId=${sessionId.current}`;
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const popups: Popup[] = data?.data?.popups ?? data?.popups ?? [];
-      const eligible = popups.filter(p => shouldShowPopup(p));
-      if (eligible.length > 0) {
-        queueRef.current = eligible;
-        setQueue(eligible);
-        showAt(eligible, 0);
-      }
-    } catch {}
-  };
-
-  const showAt = (q: Popup[], idx: number) => {
+  const showAt = useCallback((q: Popup[], idx: number) => {
     if (idx >= q.length) return;
     idxRef.current = idx;
     const popup = q[idx]!;
@@ -149,11 +124,11 @@ export function PopupEngine() {
       autoDismissTimer.current = setTimeout(() => {
         autoDismissTimer.current = null;
         if (currentIdRef.current === popupId) {
-          dismissCurrent("dismiss");
+          dismissCurrentRef.current("dismiss");
         }
       }, 4000);
     }
-  };
+  }, [token]);
 
   const dismissCurrent = useCallback((action: "dismiss" | "click" = "dismiss") => {
     if (!current) return;
@@ -173,7 +148,36 @@ export function PopupEngine() {
         setTimeout(() => showAt(queueRef.current, nextIdx), 300);
       }
     }, 220);
-  }, [current, token]);
+  }, [current, token, showAt]);
+
+  useEffect(() => {
+    dismissCurrentRef.current = dismissCurrent;
+  }, [dismissCurrent]);
+
+  useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+    (async () => {
+      try {
+        const url = `${BASE}/popups/active?sessionId=${sessionId.current}`;
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const popups: Popup[] = data?.data?.popups ?? data?.popups ?? [];
+        const eligible = popups.filter(p => shouldShowPopup(p));
+        if (eligible.length > 0) {
+          queueRef.current = eligible;
+          setQueue(eligible);
+          showAt(eligible, 0);
+        }
+      } catch {}
+    })();
+    return () => {
+      if (autoDismissTimer.current) clearTimeout(autoDismissTimer.current);
+    };
+  }, [showAt]);
 
   const handleCta = useCallback(() => {
     if (!current) return;

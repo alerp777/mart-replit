@@ -108,7 +108,7 @@ export function PullToRefresh({ onRefresh, children, accentColor = "#1A56DB", cl
     } else {
       setPullY(0);
     }
-  }, [pullY, handleRefresh]);
+  }, [pullY, handleRefresh, threshold]);
 
   const progress = Math.min(pullY / threshold, 1);
   const showIndicator = pullY > 10 || refreshing;

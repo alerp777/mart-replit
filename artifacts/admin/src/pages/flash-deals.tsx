@@ -69,7 +69,7 @@ export default function FlashDealsPage() {
     queryFn: () => fetcher("/products"),
   });
 
-  const deals: FlashDeal[]   = dealsData?.deals   || [];
+  const deals = useMemo<FlashDeal[]>(() => dealsData?.deals ?? [], [dealsData?.deals]);
   const products: Product[]  = productsData?.products || [];
   const totalPages = Math.max(1, Math.ceil(deals.length / PAGE_SIZE));
   const pagedDeals = useMemo(() => deals.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [deals, page]);

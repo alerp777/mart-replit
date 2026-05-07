@@ -15,10 +15,7 @@ export default tseslint.config(
       parser: tseslint.parser,
     },
     linterOptions: {
-      // Pre-existing eslint-disable comments for rules that are currently off
-      // (e.g. react-hooks/exhaustive-deps) must not be flagged as unused.
-      // This config is intentionally scoped to no-console enforcement only.
-      reportUnusedDisableDirectives: false,
+      reportUnusedDisableDirectives: true,
     },
     rules: {
       // Block console.log and console.debug — these can leak debug output in production.
@@ -27,11 +24,10 @@ export default tseslint.config(
       // this rule is the developer-facing gate that makes violations visible in CI.
       "no-console": ["error", { allow: ["error", "warn"] }],
 
-      // Registered so existing eslint-disable-next-line react-hooks/exhaustive-deps
-      // comments in the codebase are accepted. Rule is intentionally off — a
-      // dedicated lint clean-up task tracks enabling it fully.
-      "react-hooks/exhaustive-deps": "off",
-      "react-hooks/rules-of-hooks": "off",
+      // Enforce correct hook dependency arrays to prevent stale closure bugs.
+      "react-hooks/exhaustive-deps": "warn",
+      // Enforce rules of hooks (call order, no conditionals) — violations are bugs.
+      "react-hooks/rules-of-hooks": "error",
     },
   },
 );

@@ -320,7 +320,7 @@ export default function DepositRequests() {
   const bulkApprove = useBulkApproveDeposits();
   const bulkReject = useBulkRejectDeposits();
 
-  const deposits: Deposit[] = data?.deposits || [];
+  const deposits = useMemo<Deposit[]>(() => data?.deposits ?? [], [data?.deposits]);
 
   const duplicateTxIds = useMemo(() => {
     const seen = new Map<string, number>();

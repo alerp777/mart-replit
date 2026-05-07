@@ -930,7 +930,7 @@ function MaintenanceScheduleSection({ apiFetch, toast }: { apiFetch: (path: stri
     }).catch((err) => {
       if (import.meta.env.DEV) console.error("[SystemSettings] Maintenance schedule load failed:", err);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [apiFetch]);
 
   const save = async () => {
     setSaving(true);
@@ -1017,7 +1017,7 @@ function DataRetentionSection({ apiFetch, toast }: { apiFetch: (path: string, op
     }).catch((err) => {
       if (import.meta.env.DEV) console.error("[SystemSettings] Retention policies load failed:", err);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [apiFetch]);
 
   const save = async () => {
     setSaving(true);

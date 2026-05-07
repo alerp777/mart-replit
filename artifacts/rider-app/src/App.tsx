@@ -109,16 +109,7 @@ function AppRoutes() {
     if (integ.analytics && integ.analyticsTrackingId) {
       initAnalytics(integ.analyticsPlatform, integ.analyticsTrackingId, integ.analyticsDebug ?? false);
     }
-  }, [config?.integrations?.sentryDsn, config?.integrations?.analyticsTrackingId]);
-
-  /* ── Identify user in Sentry/Analytics after login ── */
-  useEffect(() => {
-    if (user) {
-      setSentryUser(String(user.id), user.email);
-      identifyUser(String(user.id));
-      trackEvent("rider_session_start");
-    }
-  }, [user?.id]);
+  }, [config?.integrations]);
 
   /* ── Cold-start notification tap: consume any tap captured before auth loaded ──
      This handles the case where the rider taps a push notification while the app

@@ -474,7 +474,7 @@ export default function ErrorMonitor() {
     enabled: activeTab === "customers",
   });
 
-  const reports: ErrorReport[] = data?.reports || [];
+  const reports = useMemo<ErrorReport[]>(() => data?.reports ?? [], [data?.reports]);
   const pagination: Pagination = data?.pagination || { page: 1, limit: 30, total: 0, totalPages: 0 };
   const customerReports: CustomerReport[] = customerData?.reports || [];
   const customerPagination: Pagination = customerData?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 };

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { vendorIsDev } from "./envValidation";
@@ -57,14 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshingRef = useRef(false);
 
-  const clearRefreshTimer = () => {
+  const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
-  };
+  }, []);
 
-  const scheduleProactiveRefresh = (tok: string) => {
+  const scheduleProactiveRefresh = useCallback((tok: string) => {
     clearRefreshTimer();
     const exp = decodeJwtExp(tok);
     if (!exp) return;
@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshingRef.current = false;
       }
     }, refreshIn);
-  };
+  }, [clearRefreshTimer]);
 
   useEffect((): (() => void) | void => {
     const controller = new AbortController();
@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initAuth();
     return () => { controller.abort(); clearRefreshTimer(); };
-  }, []);
+  }, [scheduleProactiveRefresh, clearRefreshTimer]);
 
   useEffect(() => {
     const clearAuth = () => { setToken(null); setUser(null); };

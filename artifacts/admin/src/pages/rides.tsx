@@ -604,6 +604,7 @@ function useDispatchTileConfig() {
 /* ── FitBounds: auto-zooms map to show all markers ── */
 function FitBounds({ positions }: { positions: [number, number][] }) {
   const map = useMap();
+  const posKey = useMemo(() => positions.map(p => p.join(",")).join("|"), [positions]);
   useEffect(() => {
     if (positions.length === 0) return;
     if (positions.length === 1) {
@@ -611,7 +612,7 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
     } else {
       map.fitBounds(L.latLngBounds(positions), { padding: [40, 40], maxZoom: 15 });
     }
-  }, [positions.map(p => p.join(",")).join("|")]);
+  }, [posKey, map, positions]);
   return null;
 }
 

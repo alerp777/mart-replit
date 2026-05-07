@@ -318,7 +318,7 @@ export default function SosAlerts() {
   /* ── Initial load + reload on tab change ── */
   useEffect(() => {
     loadAlerts(1, false, tab);
-  }, [tab]);
+  }, [tab, loadAlerts]);
 
   /* ── Socket.io real-time connection ── */
   useEffect(() => {

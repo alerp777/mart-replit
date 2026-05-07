@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useHasPermission } from "@/hooks/usePermissions";
 import { PageHeader } from "@/components/shared";
@@ -741,13 +741,13 @@ function FlaggedTab() {
   const [status, setStatus] = useState("pending");
   const [resolveErrors, setResolveErrors] = useState<Record<string, string>>({});
 
-  const load = () => {
+  const load = useCallback(() => {
     fetcher(`/communication/flags?status=${status}`)
       .then((d: FlagItem[] | { data: FlagItem[] }) => setFlags(Array.isArray(d) ? d : d.data))
       .catch((err) => { console.error("[Communication] Flagged messages load failed:", err); });
-  };
+  }, [status]);
 
-  useEffect(() => { load(); }, [status]);
+  useEffect(() => { load(); }, [load]);
 
   const resolve = async (id: string) => {
     setResolveErrors(e => ({ ...e, [id]: "" }));
@@ -1220,7 +1220,7 @@ function AjkIdsTab() {
     setPage(1);
   }, [debouncedSearch, roleFilter]);
 
-  const loadUsers = () => {
+  const loadUsers = useCallback(() => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (roleFilter) params.set("role", roleFilter);
@@ -1229,9 +1229,9 @@ function AjkIdsTab() {
     fetcherWithMeta(`/communication/ajk-ids?${params.toString()}`)
       .then((d) => { setUsers((d.data as UserItem[]) || []); setTotal((d.total as number) || 0); })
       .catch((err) => { console.error("[Communication] AJK IDs load failed:", err); });
-  };
+  }, [debouncedSearch, roleFilter, page]);
 
-  useEffect(() => { loadUsers(); }, [debouncedSearch, roleFilter, page]);
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const searchUsers = async (q: string) => {
     setSearchQuery(q);
