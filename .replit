@@ -17,6 +17,44 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/admin: web"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && pnpm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "artifacts/admin: web"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/admin && ADMIN_DEV_PORT=3001 BASE_PATH=/admin/ pnpm run dev"
+waitForPort = 3001
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -71,7 +109,7 @@ EXPO_PUBLIC_DOMAIN = "localhost:5000"
 VITE_API_BASE_URL = "http://localhost:5000"
 ADMIN_LEGACY_AUTH_DISABLED = "0"
 ADMIN_PASSWORD_RESET_TOKEN_TTL_MIN = "15"
-ADMIN_DEV_PORT = "23744"
+ADMIN_DEV_PORT = "3001"
 JWT_SECRET = "70d7bbb271fc1cf1a6397e8407153c9212f0e27c4b1b38c3f56ec08701718bc3849fe94eebaaed82f47d1cd93830ca7fe3255983484582511c8860cbec76f7cb"
 ADMIN_ACCESS_TOKEN_SECRET = "4155520e37c912db3f619ba139da551f3929df71a3501bc38bac7555f6d91b48875605d6e32b2a7ef66c68069f12f00cf212545db6aa440495089cfb9ad67dad"
 ADMIN_REFRESH_TOKEN_SECRET = "3c55bd900ca69183a11dc19b0472308ea6056d393b67228364a2fdd36c9c4d5e1bf6a8087a9f23789e01e9e90dbc577107fdb129bd2980dcbd5f3c87dc13bdcb"
@@ -97,10 +135,7 @@ id = "module:nodejs-24/languageServer:typescript-language-server"
 
 [[ports]]
 localPort = 3000
-
-[[ports]]
-localPort = 3001
-externalPort = 6000
+externalPort = 3000
 
 [[ports]]
 localPort = 3002
@@ -121,10 +156,6 @@ externalPort = 5173
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
 
 [[ports]]
 localPort = 8082
@@ -165,3 +196,7 @@ externalPort = 3000
 [[ports]]
 localPort = 23745
 externalPort = 9000
+
+[[ports]]
+localPort = 3001
+externalPort = 3001

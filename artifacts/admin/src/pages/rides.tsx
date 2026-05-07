@@ -37,7 +37,8 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { StatusBadge } from "@/components/AdminShared";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 interface EnrichedRide {
   id: string;
@@ -1508,16 +1509,12 @@ export default function Rides() {
   useEffect(() => { const t = setTimeout(() => setDebouncedCustomer(customerFilter), 300); return () => clearTimeout(t); }, [customerFilter]);
   useEffect(() => { const t = setTimeout(() => setDebouncedRider(riderFilter), 300); return () => clearTimeout(t); }, [riderFilter]);
 
-  const { data, isLoading } = useRidesEnriched({
+  const { data, isLoading, dataUpdatedAt, refetch, isFetching } = useRidesEnriched({
     page, limit: PAGE_SIZE,
     status: statusFilter, type: typeFilter,
     search: debouncedSearch, customer: debouncedCustomer, rider: debouncedRider,
     dateFrom, dateTo, sortBy, sortDir,
   });
-
-  const [secAgo, setSecAgo] = useState(0);
-  useEffect(() => { if (!isLoading) setSecAgo(0); }, [isLoading]);
-  useEffect(() => { const t = setInterval(() => setSecAgo(s => s + 1), 1000); return () => clearInterval(t); }, []);
 
   /* ── Real-time ride list sync via Socket.io ── */
   useEffect(() => {
@@ -1585,10 +1582,7 @@ export default function Rides() {
         iconBgClass="bg-green-100"
         iconColorClass="text-green-600"
         actions={
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
-            {isLoading ? "Refreshing..." : `${secAgo}s ago`}
-          </span>
+          <LastUpdated dataUpdatedAt={dataUpdatedAt ?? 0} onRefresh={() => refetch()} isRefreshing={isFetching} />
         }
       />
 

@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, Download, RefreshCw, AlertTriangle } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageHeader, ActionBar } from "@/components/shared";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useLanguage } from "@/lib/useLanguage";
@@ -73,7 +74,7 @@ export default function Orders() {
     sortDir,
   }), [statusFilter, typeFilter, debouncedSearch, dateFrom, dateTo, page, pageSize, sortKey, sortDir]);
 
-  const { data, isLoading, isError, error } = useOrdersEnriched(serverFilters);
+  const { data, isLoading, isError, error, dataUpdatedAt, refetch, isFetching } = useOrdersEnriched(serverFilters);
   const { data: statsData } = useOrdersStats();
 
   const handleSort = useCallback((key: SortKey) => {
@@ -200,13 +201,6 @@ export default function Orders() {
 
   const pendingOrders = useMemo(() => orders.filter((o: any) => o.status === "pending"), [orders]);
 
-  const [secAgo, setSecAgo] = useState(0);
-  const [lastRefreshed, setLastRefreshed] = useState(new Date());
-  useEffect(() => { if (!isLoading) { setLastRefreshed(new Date()); setSecAgo(0); } }, [isLoading]);
-  useEffect(() => {
-    const t = setInterval(() => setSecAgo(s => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [lastRefreshed]);
 
   const qc = useQueryClient();
   const handlePullRefresh = useCallback(async () => {
@@ -241,10 +235,7 @@ export default function Orders() {
         iconBgClass="bg-indigo-100"
         iconColorClass="text-indigo-600"
         actions={
-          <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-            <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500" : "bg-amber-400"} animate-pulse`} aria-hidden="true" />
-            {isLoading ? "Refreshing..." : `${secAgo}s ago`}
-          </div>
+          <LastUpdated dataUpdatedAt={dataUpdatedAt ?? 0} onRefresh={() => refetch()} isRefreshing={isFetching} />
         }
       />
 
