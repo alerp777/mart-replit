@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { INPUT, LABEL } from "../lib/ui";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { SafeImage } from "./ui/SafeImage";
 
 const DEFAULT_MAX_IMAGE_MB = 5;
 const DEFAULT_ALLOWED_IMAGE_FORMATS = ["image/jpeg", "image/png", "image/webp"];
@@ -36,13 +37,9 @@ export function ImageUploader({
 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const [imgError, setImgError] = useState(false);
   const [mode, setMode] = useState<"upload" | "url">(value && value.startsWith("http") ? "url" : "upload");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setImgError(false);
-  }, [value]);
 
   const handleFile = async (file: File) => {
     if (uploading) return;
@@ -160,18 +157,14 @@ export function ImageUploader({
 
       {value && (
         <div className={`rounded-xl overflow-hidden ${previewHeight} bg-gray-100 mt-3 relative group`}>
-          {!imgError ? (
-            <img
-              src={value}
-              alt="preview"
-              className="w-full h-full object-cover"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-xs text-gray-400 font-medium">
-              {T("error")}
-            </div>
-          )}
+          <SafeImage
+            key={value}
+            src={value}
+            alt="preview"
+            className="w-full h-full object-cover"
+            fallbackClassName="w-full h-full"
+            loading="eager"
+          />
           <button
             type="button"
             onClick={e => { e.stopPropagation(); onChange(""); }}

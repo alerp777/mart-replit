@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../lib/auth";
 import { apiFetch, api } from "../lib/api";
 import { io, type Socket } from "socket.io-client";
+import { SafeImage } from "../components/ui/SafeImage";
 
 interface OtherUser { id: string; name: string | null; ajkId: string | null; roles?: string | null; }
 interface Conversation { id: string; otherUser: OtherUser; lastMessage: { content: string } | null; unreadCount: number; lastMessageAt: string | null; }
@@ -320,7 +321,7 @@ export default function Chat() {
               {messages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.senderId === user?.id ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${msg.senderId === user?.id ? "bg-orange-500 text-white rounded-br-md" : "bg-gray-100 text-gray-800 rounded-bl-md"}`}>
-                    {msg.messageType === "image" && msg.imageUrl && <img src={msg.imageUrl} alt="" className="rounded-xl mb-1 max-w-full" />}
+                    {msg.messageType === "image" && msg.imageUrl && <SafeImage src={msg.imageUrl} alt="" className="rounded-xl mb-1 max-w-full" />}
                     {msg.messageType === "voice_note" && msg.voiceNoteUrl && (
                       <audio controls src={msg.voiceNoteUrl} className="max-w-full" />
                     )}

@@ -12,6 +12,7 @@ import {
   Clock, User, Phone, Mail, FileText, Car, Shield, Lightbulb,
   MapPin, AlertCircle, Camera, Upload, X, CheckCircle2, Image, Wrench, Lock,
 } from "lucide-react";
+import { SafeImage } from "../components/ui/SafeImage";
 
 function formatPhoneForRegister(localDigits: string): string {
   const digits = localDigits.replace(/\D/g, "");
@@ -76,7 +77,7 @@ function FileUploadBox({ label, icon, value, onChange, required, uploading, erro
           onChange={e => { if (e.target.files?.[0]) onChange(e.target.files[0]); }} />
         {value ? (
           <div className="flex items-center gap-3">
-            <img src={value.preview} alt={label} className="w-14 h-14 rounded-lg object-cover border border-green-200" />
+            <SafeImage src={value.preview} alt={label} className="w-14 h-14 rounded-lg object-cover border border-green-200" loading="eager" />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold text-green-700 flex items-center gap-1"><CheckCircle2 size={12} /> {label}</p>
               <p className="text-[10px] text-green-600 truncate">{value.url ? T("photoUploaded") : T("photoReady2")}</p>

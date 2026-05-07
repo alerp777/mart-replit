@@ -5,6 +5,7 @@ import {
   MapPinned, ArrowDown, Shield, Navigation, Clock, Zap,
   ChevronRight, Eye, Truck, WifiOff, MessageSquare, ChevronDown, ChevronUp,
 } from "lucide-react";
+import { SafeImage } from "../components/ui/SafeImage";
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -1680,7 +1681,7 @@ export default function Active() {
                     {proofPhoto ? (
                       <div className="space-y-2.5">
                         <div className="relative rounded-2xl overflow-hidden h-44 bg-gray-100 shadow-inner">
-                          <img src={proofPhoto} alt="Delivery proof" className="w-full h-full object-cover" />
+                          <SafeImage src={proofPhoto} alt="Delivery proof" className="w-full h-full object-cover" loading="eager" />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"/>
                           <div className="absolute top-3 right-3">
                             <span className="bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1 shadow-lg">

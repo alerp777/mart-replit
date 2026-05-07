@@ -8,6 +8,7 @@ import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { ImageUploader } from "../components/ImageUploader";
+import { SafeImage } from "../components/ui/SafeImage";
 import { fc, CARD, INPUT, TEXTAREA, BTN_PRIMARY, LABEL, errMsg } from "../lib/ui";
 import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
@@ -281,7 +282,7 @@ export default function Store() {
             <div className="space-y-4">
               {user?.storeBanner && (
                 <div className="rounded-2xl overflow-hidden h-36 bg-gray-100">
-                  <img src={user.storeBanner} alt="Banner" className="w-full h-full object-cover"/>
+                  <SafeImage src={user.storeBanner} alt="Banner" className="w-full h-full object-cover" />
                 </div>
               )}
               <div className={`${CARD} p-4 space-y-3`}>

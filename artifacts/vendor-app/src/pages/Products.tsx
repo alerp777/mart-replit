@@ -8,6 +8,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ImageUploader } from "../components/ImageUploader";
+import { SafeImage } from "../components/ui/SafeImage";
 import { fc, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart", videoUrl:"" };
@@ -662,7 +663,7 @@ export default function Products() {
               <div key={p.id} className={`${CARD}${!p.inStock ? " opacity-60" : ""}`}>
                 <div className="p-4 flex items-start gap-3">
                   {p.image
-                    ? <img src={p.image} alt={p.name} className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100"/>
+                    ? <SafeImage src={p.image} alt={p.name} className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
                     : <div className="w-16 h-16 rounded-xl bg-orange-50 flex items-center justify-center text-2xl flex-shrink-0">🍽️</div>
                   }
                   <div className="flex-1 min-w-0">

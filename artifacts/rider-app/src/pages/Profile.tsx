@@ -10,6 +10,7 @@ import {
   ChevronRight, ChevronDown, ChevronUp, Ban,
   Languages, Settings,
 } from "lucide-react";
+import { SafeImage } from "../components/ui/SafeImage";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
@@ -491,7 +492,7 @@ export default function Profile() {
               className="relative w-16 h-16 rounded-2xl flex-shrink-0 shadow-lg ring-4 ring-gray-200 overflow-hidden group"
             >
               {user?.avatar ? (
-                <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
+                <SafeImage src={user.avatar} alt="Profile" className="w-full h-full object-cover" loading="eager" />
               ) : (
                 <div className="w-full h-full bg-gray-900 flex items-center justify-center text-2xl font-extrabold text-white">
                   {(user?.name || user?.phone || "R")[0].toUpperCase()}

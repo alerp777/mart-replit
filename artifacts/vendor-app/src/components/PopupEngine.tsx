@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "../lib/auth";
 import { getVendorApiBase } from "../lib/envValidation";
+import { SafeImage } from "./ui/SafeImage";
 
 const BASE = getVendorApiBase();
 
@@ -241,7 +242,7 @@ export function PopupEngine() {
           <div className="w-9 h-1 bg-white/30 rounded-full mx-auto mt-3 mb-1" />
           <div className="px-6 pb-10 pt-4">
             {current.mediaUrl && (
-              <img src={current.mediaUrl} alt="" className="w-full h-40 object-cover rounded-2xl mb-4" />
+              <SafeImage src={current.mediaUrl} alt="" className="w-full h-40 object-cover rounded-2xl mb-4" />
             )}
             <p className="text-xl font-extrabold mb-2" style={{ color: tc }}>{current.title}</p>
             {current.body && <p className="text-sm opacity-85 mb-4" style={{ color: tc }}>{current.body}</p>}
@@ -281,7 +282,7 @@ export function PopupEngine() {
           style={{ background: g }}
         >
           {current.mediaUrl && (
-            <img src={current.mediaUrl} alt="" className="w-full h-36 object-cover" />
+            <SafeImage src={current.mediaUrl} alt="" className="w-full h-36 object-cover" />
           )}
           <button
             onClick={() => dismissCurrent()}
@@ -311,7 +312,7 @@ export function PopupEngine() {
   return (
     <div className={`fixed inset-0 z-[9998] ${animClass}`} style={{ background: g }}>
       {current.mediaUrl && (
-        <img src={current.mediaUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
+        <SafeImage src={current.mediaUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
       )}
       <button
         onClick={() => dismissCurrent()}
