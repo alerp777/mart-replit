@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { Home, MapPin, Wallet, Bell, User, MessageCircle } from "lucide-react";
+import { Home, MapPin, Wallet, Bell, User, MessageCircle, RefreshCw } from "lucide-react";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { usePlatformConfig, getRiderModules } from "../lib/useConfig";
+import { useQueueStatus } from "../lib/offline/queueManager";
 
 import type { LucideProps } from "lucide-react";
 import type { RiderModules } from "../lib/useConfig";
@@ -25,6 +26,7 @@ export function BottomNav() {
   const T = (key: TranslationKey) => tDual(key, language);
   const { config } = usePlatformConfig();
   const modules = getRiderModules(config);
+  const { pendingCount, syncing } = useQueueStatus();
 
   const { data: notifData } = useQuery({
     queryKey: ["rider-notifs-count"],
@@ -45,6 +47,14 @@ export function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-gray-200/60 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]"
       style={{ paddingBottom: "max(6px, env(safe-area-inset-bottom, 6px))" }}>
+      {pendingCount > 0 && (
+        <div className="flex items-center justify-center gap-1.5 bg-amber-500 text-white text-[10px] font-bold py-1 px-3">
+          <RefreshCw size={10} className={syncing ? "animate-spin" : ""} />
+          {syncing
+            ? `Syncing ${pendingCount} pending action${pendingCount > 1 ? "s" : ""}…`
+            : `${pendingCount} action${pendingCount > 1 ? "s" : ""} queued — will sync when online`}
+        </div>
+      )}
       <div className="flex max-w-md mx-auto">
         {navItems.filter(item => !item.moduleKey || modules[item.moduleKey] !== false).map(item => {
           const active = location === item.href || (item.href !== "/" && location.startsWith(item.href));

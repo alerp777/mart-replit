@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api, apiFetch } from "../../lib/api";
 import { riderIsDev } from "../../lib/envValidation";
+import { checkSufficientBalance } from "../../lib/wallet/validation";
 import {
   X, ArrowLeft, Landmark, Smartphone, ChevronRight,
   CheckCircle, AlertTriangle, Loader2,
@@ -68,6 +69,17 @@ export default function DepositModal({
   const goToMethod = () => {
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt < 100) { setErr(`Minimum deposit ${currencySymbol} 100 hai`); return; }
+    /* If the rider's balance is below the minimum operating threshold, ensure
+       this deposit is large enough to cover the shortfall — using the same
+       library guard that WithdrawModal uses to prevent overdrafts. */
+    const shortfall = Math.max(0, minBalance - balance);
+    if (shortfall > 0) {
+      const gapCheck = checkSufficientBalance(amt, shortfall);
+      if (!gapCheck.valid) {
+        setErr(`Please deposit at least ${fc(shortfall)} to cover your minimum balance requirement`);
+        return;
+      }
+    }
     setErr(""); setStep("method");
   };
 

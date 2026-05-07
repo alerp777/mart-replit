@@ -8,13 +8,15 @@ import { useLanguage, LanguageProvider } from "./lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { SocketProvider } from "./lib/socket";
 import { registerDrainHandler, setGpsQueueMax, setDismissedRequestTtlSec, type QueuedPing } from "./lib/gpsQueue";
+import { registerActionExecutor, syncQueue, type QueuedAction } from "./lib/offline/queueManager";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { registerPush, consumePendingNotificationTap } from "./lib/push";
 import { Capacitor } from "@capacitor/core";
 import { initSentry, setSentryUser } from "./lib/sentry";
 import { initAnalytics, trackEvent, identifyUser } from "./lib/analytics";
 import { initErrorReporter } from "./lib/error-reporter";
-import { api, setApiTimeoutMs } from "./lib/api";
+import { api, apiFetch, setApiTimeoutMs } from "./lib/api";
+import { setGeofencePolygon } from "./lib/gps/validation";
 import { riderEnv } from "./lib/envValidation";
 import { BottomNav } from "./components/BottomNav";
 import { AnnouncementBar } from "./components/AnnouncementBar";
@@ -88,6 +90,42 @@ function AppRoutes() {
     });
   }, []);
 
+  useEffect(() => {
+    registerActionExecutor(async (action: QueuedAction) => {
+      /* Pass X-Idempotency-Key so the server can de-duplicate replayed offline
+         actions. The action UUID is stable across retries and survives tab close
+         via IndexedDB persistence. */
+      const idemHdr = { "X-Idempotency-Key": action.id };
+      switch (action.type) {
+        case "accept_order":
+          await apiFetch(`/rider/orders/${action.entityId}/accept`, { method: "POST", body: "{}", headers: idemHdr });
+          break;
+        case "accept_ride":
+          await apiFetch(`/rider/rides/${action.entityId}/accept`, { method: "POST", body: "{}", headers: idemHdr });
+          break;
+        case "update_order": {
+          const { status, proofPhoto } = action.payload as { status: string; proofPhoto?: string };
+          await apiFetch(`/rider/orders/${action.entityId}/status`, { method: "PATCH", body: JSON.stringify({ status, ...(proofPhoto ? { proofPhoto } : {}) }), headers: idemHdr });
+          break;
+        }
+        case "update_ride": {
+          const { status, lat, lng } = action.payload as { status: string; lat?: number; lng?: number };
+          const loc = lat !== undefined && lng !== undefined ? { lat, lng } : {};
+          await apiFetch(`/rider/rides/${action.entityId}/status`, { method: "PATCH", body: JSON.stringify({ status, ...loc }), headers: idemHdr });
+          break;
+        }
+        case "complete_trip": {
+          /* complete_trip is enqueued by VanDriver when a van trip completion
+             fails offline. entityId = scheduleId, payload.date = trip date. */
+          const { date } = action.payload as { date: string };
+          await apiFetch(`/van/driver/schedules/${action.entityId}/date/${date}/complete`, { method: "PATCH", body: "{}", headers: idemHdr });
+          break;
+        }
+      }
+    });
+    syncQueue().catch(() => {});
+  }, []);
+
   useEffect(() => { initErrorReporter(); }, []);
 
   /* ── Apply network/retry settings from platform config on startup ── */
@@ -98,6 +136,16 @@ function AppRoutes() {
     if (typeof net.riderGpsQueueMax === "number")            setGpsQueueMax(net.riderGpsQueueMax);
     if (typeof net.riderDismissedRequestTtlSec === "number") setDismissedRequestTtlSec(net.riderDismissedRequestTtlSec);
   }, [config]);
+
+  /* ── Wire platform-config geofence into GPS validation module ── */
+  useEffect(() => {
+    const poly = config?.geofence?.polygon;
+    if (Array.isArray(poly) && poly.length >= 3) {
+      setGeofencePolygon(poly);
+    } else {
+      setGeofencePolygon(null);
+    }
+  }, [config?.geofence]);
 
   /* ── Sentry + Analytics init from platform config ── */
   useEffect(() => {
@@ -112,15 +160,34 @@ function AppRoutes() {
   }, [config?.integrations]);
 
   /* ── Cold-start notification tap: consume any tap captured before auth loaded ──
-     This handles the case where the rider taps a push notification while the app
-     is completely killed.  The pushNotificationActionPerformed listener in push.ts
-     fires at module-load time and stashes the data; here we drain it once the
-     user session is ready and navigate to the correct screen. */
+     Handles two cases:
+     (a) pushNotificationActionPerformed fired at module-load (killed-app tap)
+         → drained from _pendingTapData via consumePendingNotificationTap.
+     (b) getDeliveredNotifications reveals a notification the rider hasn't
+         dismissed yet (backgrounded app case on some Android builds).
+     Routes based on data.type so future push types (wallet, etc.) land
+     on the correct screen rather than always going to /active. */
   useEffect(() => {
     if (!user) return;
+    const routeByData = (data: Record<string, string>) => {
+      const type = data.type ?? "";
+      if (type === "wallet") { navigate("/wallet"); return; }
+      if (data.rideId || data.orderId || type === "ride_request" || type === "order_request" || type === "new_order") {
+        navigate("/active");
+      }
+    };
     const pending = consumePendingNotificationTap();
-    if (pending && (pending.rideId || pending.orderId)) {
-      navigate("/active");
+    if (pending && Object.keys(pending).length > 0) {
+      routeByData(pending);
+      return;
+    }
+    if (Capacitor.isNativePlatform()) {
+      import("@capacitor/push-notifications").then(({ PushNotifications }) => {
+        PushNotifications.getDeliveredNotifications().then(({ notifications }) => {
+          const first = notifications[0];
+          if (first?.data) routeByData(first.data as Record<string, string>);
+        }).catch(() => {});
+      }).catch(() => {});
     }
   }, [user?.id]);
 

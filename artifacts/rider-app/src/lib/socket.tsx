@@ -3,6 +3,7 @@ import { io, type Socket } from "socket.io-client";
 import { api, getApiBase } from "./api";
 import { useAuth } from "./auth";
 import { getRiderSocketOrigin } from "./envValidation";
+import { syncQueue } from "./offline/queueManager";
 
 type SocketContextType = {
   socket: Socket | null;
@@ -60,7 +61,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socketRef.current = s;
     setSocket(s);
 
-    s.on("connect", () => setConnected(true));
+    s.on("connect", () => {
+      setConnected(true);
+      syncQueue().catch(() => {});
+    });
     s.on("disconnect", () => setConnected(false));
     s.on("connect_error", () => setConnected(false));
 

@@ -11,38 +11,83 @@ const TOKEN_KEY   = "ajkmart_rider_token";
 const REFRESH_KEY = "ajkmart_rider_refresh_token";
 
 /* ── Secure token storage ──────────────────────────────────────────────────────
-   Access tokens still live in localStorage so closing a tab mid-trip does
-   not force a full re-login — the rider can reopen the browser and the active
-   trip screen rehydrates automatically via the refresh flow.
+   Access tokens are stored in @capacitor/preferences (secure plugin) on native.
+   In-memory cache avoids repeated async reads during a session.
 
-   Refresh tokens are now carried by an HttpOnly cookie issued by the server
-   (`ajkmart_rider_refresh`, scoped to /api/auth) which is invisible to JS and
-   immune to XSS exfiltration. We keep an in-memory shadow copy of the refresh
-   raw value so the legacy POST-body fallback continues to work for one
-   release while older bundles roll out — but we deliberately DO NOT persist it
-   to localStorage anymore. A one-shot purge on app boot wipes any
-   leftover refresh token from previous installs. */
+   Migration: on first boot, if an existing token is found in localStorage,
+   it is moved to Preferences and deleted from localStorage.
+
+   Refresh tokens are carried by an HttpOnly cookie (no localStorage). */
 
 let _inMemoryAccessToken   = "";
 let _inMemoryRefreshToken  = "";
 
-/* One-time purge of legacy refresh-token persistence. Runs at module init in
-   browser environments. Safe to no-op when storage is unavailable. */
+/* One-time purge of legacy refresh-token persistence. */
 try {
   if (typeof localStorage !== "undefined") {
     localStorage.removeItem(REFRESH_KEY);
   }
-} catch { /* storage may be blocked — nothing to purge */ }
+} catch { /* storage may be blocked */ }
 
-/* Access token helpers — localStorage (persists across tab close / mid-trip reopen) */
+/* ── Preferences-backed async token storage ── */
+async function preferencesSet(key: string, value: string): Promise<void> {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    await Preferences.set({ key, value });
+  } catch {
+    /* Fall back silently (browser without Capacitor context) */
+    try { localStorage.setItem(key, value); } catch {}
+  }
+}
+
+async function preferencesGet(key: string): Promise<string> {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    const { value } = await Preferences.get({ key });
+    return value ?? "";
+  } catch {
+    try { return localStorage.getItem(key) ?? ""; } catch { return ""; }
+  }
+}
+
+async function preferencesRemove(key: string): Promise<void> {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    await Preferences.remove({ key });
+  } catch {
+    try { localStorage.removeItem(key); } catch {}
+  }
+}
+
+/* One-time migration: move any token from localStorage → Preferences at boot.
+   Exported as a promise so AuthProvider can await it before reading the token —
+   avoids treating a valid persisted session as "no token" when the async load
+   hasn't completed yet (critical on app restart). */
+export const tokenStoreReady: Promise<void> = (async () => {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const legacy = localStorage.getItem(TOKEN_KEY);
+    if (legacy) {
+      _inMemoryAccessToken = legacy;
+      await preferencesSet(TOKEN_KEY, legacy);
+      localStorage.removeItem(TOKEN_KEY);
+    } else {
+      _inMemoryAccessToken = await preferencesGet(TOKEN_KEY);
+    }
+  } catch { /* swallow — token access is non-fatal on boot */ }
+})();
+
+/* Access token helpers — Preferences-backed, with in-memory cache */
 function sessionGet(): string {
-  try { return localStorage.getItem(TOKEN_KEY) ?? ""; } catch { return _inMemoryAccessToken; }
+  return _inMemoryAccessToken;
 }
 function sessionSet(value: string): void {
-  try { localStorage.setItem(TOKEN_KEY, value); } catch { _inMemoryAccessToken = value; }
+  _inMemoryAccessToken = value;
+  preferencesSet(TOKEN_KEY, value).catch(() => {});
 }
 function sessionRemove(): void {
-  try { localStorage.removeItem(TOKEN_KEY); } catch { _inMemoryAccessToken = ""; }
+  _inMemoryAccessToken = "";
+  preferencesRemove(TOKEN_KEY).catch(() => {});
 }
 
 /* Refresh token helpers — IN-MEMORY ONLY.
@@ -348,7 +393,15 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
     } catch {}
     throw error;
   }
-  const json = await res.json() as ApiEnvelope;
+  let json: ApiEnvelope;
+  try {
+    json = await res.json() as ApiEnvelope;
+  } catch {
+    throw Object.assign(
+      new Error("Response could not be parsed — please try again."),
+      { status: res.status, parseError: true },
+    );
+  }
   /* When returnEnvelope is true, the caller receives the full JSON envelope
      (e.g. to read top-level fields like serverTime alongside data). */
   if (_returnEnvelope) return json;

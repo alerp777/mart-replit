@@ -16,9 +16,30 @@
  * project roots before building.
  */
 
+import { z } from "zod";
 import { Capacitor } from "@capacitor/core";
 import { api, getApiBase } from "./api";
 import { riderEnv, riderIsDev } from "./envValidation";
+
+const PushPayloadSchema = z.object({
+  type: z.string().optional(),
+  rideId: z.string().optional(),
+  orderId: z.string().optional(),
+  title: z.string().optional(),
+  body: z.string().optional(),
+  route: z.string().optional(),
+}).passthrough();
+
+type PushPayload = z.infer<typeof PushPayloadSchema>;
+
+function validatePushPayload(raw: unknown): PushPayload | null {
+  const result = PushPayloadSchema.safeParse(raw);
+  if (!result.success) {
+    if (riderIsDev) console.warn("[push] Malformed payload dropped:", raw);
+    return null;
+  }
+  return result.data;
+}
 
 /** Listener cleanup handle returned to callers for foreground messages. */
 export interface PushCleanup {
@@ -46,9 +67,10 @@ export function consumePendingNotificationTap(): Record<string, string> | null {
 if (Capacitor.isNativePlatform()) {
   import("@capacitor/push-notifications").then(({ PushNotifications }) => {
     PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-      const data = (action.notification?.data ?? {}) as Record<string, string>;
-      if (Object.keys(data).length > 0) {
-        _pendingTapData = data;
+      const raw = action.notification?.data ?? {};
+      const validated = validatePushPayload(raw);
+      if (validated && Object.keys(validated).length > 0) {
+        _pendingTapData = validated as Record<string, string>;
       }
     }).catch(() => {});
   }).catch(() => {});
@@ -129,6 +151,9 @@ async function registerFcmPush(
 
     if (onForegroundMessage) {
       PushNotifications.addListener("pushNotificationReceived", (notification) => {
+        const raw = notification.data ?? {};
+        const validated = validatePushPayload(raw);
+        if (validated === null) return;
         onForegroundMessage(notification.title ?? "", notification.body ?? "");
       }).then((h) => cleanups.push(h)).catch(() => {});
     }
@@ -138,8 +163,10 @@ async function registerFcmPush(
        the server as { rideId }) is available at notification.notification.data. */
     if (onNotificationTap) {
       PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-        const data = (action.notification?.data ?? {}) as Record<string, string>;
-        onNotificationTap(data);
+        const raw = action.notification?.data ?? {};
+        const validated = validatePushPayload(raw);
+        if (validated === null) return;
+        onNotificationTap(validated as Record<string, string>);
       }).then((h) => cleanups.push(h)).catch(() => {});
     }
 

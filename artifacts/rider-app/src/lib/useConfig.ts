@@ -147,6 +147,11 @@ export interface PlatformConfig {
   };
   wallet?: {
     withdrawalProcessingDays?: number;
+    maxDailyWithdrawal?: number;
+    maxDailyTransactionCount?: number;
+  };
+  geofence?: {
+    polygon?: Array<[number, number]>;
   };
   payment?: {
     jazzcashNumber?: string;

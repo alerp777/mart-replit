@@ -22,6 +22,7 @@ import { useLanguage } from "../lib/useLanguage";
 import { useSocket } from "../lib/socket";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { enqueue, registerDrainHandler, type QueuedPing } from "../lib/gpsQueue";
+import { enqueueAction } from "../lib/offline/queueManager";
 
 class MapErrorBoundary extends Component<{ children: ReactNode; fallbackMsg?: string }, { hasError: boolean }> {
   state = { hasError: false };
@@ -1094,7 +1095,7 @@ export default function Active() {
     }
     if (!navigator.onLine) {
       showToast("You're offline — update queued for retry", true);
-      queueUpdate({ kind: "status", run: () => api.updateOrder(id, "delivered", photoUrl) });
+      enqueueAction("update_order", id, { status: "delivered", ...(photoUrl ? { proofPhoto: photoUrl } : {}) }).catch(() => {});
       return;
     }
     updateOrderMut.mutate({ id, status: "delivered", photoUrl });
@@ -1138,7 +1139,7 @@ export default function Active() {
          re-queue if it actually fails. */
       if (!navigator.onLine) {
         showToast("You're offline — update queued for retry", true);
-        queueUpdate({ kind: "status", run: () => api.updateOrder(vars.id, vars.status, vars.photoUrl) });
+        enqueueAction("update_order", vars.id, { status: vars.status, ...(vars.photoUrl ? { proofPhoto: vars.photoUrl } : {}) }).catch(() => {});
         return { enqueued: true };
       }
       return { enqueued: false };
@@ -1168,7 +1169,7 @@ export default function Active() {
          it for retry. We rely on the failure rather than `navigator.onLine`. */
       const looksLikeNetworkErr = /network|fetch|timeout|offline/i.test(e?.message || "");
       if (looksLikeNetworkErr && !context?.enqueued) {
-        queueUpdate({ kind: "status", run: () => api.updateOrder(vars.id, vars.status, vars.photoUrl) });
+        enqueueAction("update_order", vars.id, { status: vars.status, ...(vars.photoUrl ? { proofPhoto: vars.photoUrl } : {}) }).catch(() => {});
       }
       /* O4: Translated message only — never raw server English. */
       showToast(mapMutationError(e, T), true);
@@ -1190,7 +1191,7 @@ export default function Active() {
       if (!navigator.onLine) {
         showToast("You're offline — update queued for retry", true);
         const loc = vars.lat != null && vars.lng != null ? { lat: vars.lat, lng: vars.lng } : undefined;
-        queueUpdate({ kind: "status", run: () => api.updateRide(vars.id, vars.status, loc) });
+        enqueueAction("update_ride", vars.id, { status: vars.status, ...(loc ?? {}) }).catch(() => {});
         return { enqueued: true };
       }
       return { enqueued: false };
@@ -1209,7 +1210,7 @@ export default function Active() {
       const looksLikeNetworkErr = /network|fetch|timeout|offline/i.test(e?.message || "");
       if (looksLikeNetworkErr && !context?.enqueued) {
         const loc = vars.lat != null && vars.lng != null ? { lat: vars.lat, lng: vars.lng } : undefined;
-        queueUpdate({ kind: "status", run: () => api.updateRide(vars.id, vars.status, loc) });
+        enqueueAction("update_ride", vars.id, { status: vars.status, ...(loc ?? {}) }).catch(() => {});
       }
       showToast(mapMutationError(e, T), true);
     },

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, tokenStoreReady } from "./api";
 import { executeLogoutSequence } from "./logoutSequence";
 
 /* A2: UTF-8 safe JWT decoder (COMPLETED) */
@@ -128,37 +128,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, refreshIn);
   }, [clearRefreshTimer]);
 
-  useEffect((): (() => void) | void => {
-    /* Try sessionStorage first (new approach), fall back to localStorage for existing sessions */
-    const t = api.getToken();
-    if (!t) { setLoading(false); return; }
-
-    setToken(t);
+  useEffect((): () => void => {
+    /* Await Preferences token hydration before reading getToken() — otherwise
+       a rider who was logged in on a previous session will be treated as
+       unauthenticated because _inMemoryAccessToken hasn't been populated yet
+       from the async Preferences.get() call. */
     const controller = new AbortController();
-    api.getMe(controller.signal).then(u => {
-      const roles = (u.roles || u.role || "").split(",").map((r: string) => r.trim());
-      if ((u.roles || u.role) && !roles.includes("rider")) {
+    (async () => {
+      await tokenStoreReady;
+      if (controller.signal.aborted) return;
+      const t = api.getToken();
+      if (!t) { setLoading(false); return; }
+      setToken(t);
+      try {
+        const u = await api.getMe(controller.signal);
+        if (controller.signal.aborted) return;
+        const roles = (u.roles || u.role || "").split(",").map((r: string) => r.trim());
+        if ((u.roles || u.role) && !roles.includes("rider")) {
+          api.clearTokens();
+          setToken(null);
+          return;
+        }
+        setUser(u);
+        refreshFailCountRef.current = 0;
+        scheduleProactiveRefresh(t);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        const errAny = err as Record<string, unknown>;
+        if (errAny.code === "APPROVAL_PENDING") {
+          setUser({ id: "", phone: "", isOnline: false, walletBalance: 0, approvalStatus: "pending", stats: { deliveriesToday: 0, earningsToday: 0, totalDeliveries: 0, totalEarnings: 0 } });
+          return;
+        }
+        if (errAny.code === "APPROVAL_REJECTED") {
+          setUser({ id: "", phone: "", isOnline: false, walletBalance: 0, approvalStatus: "rejected", rejectionReason: (errAny.rejectionReason as string | undefined) ?? null, stats: { deliveriesToday: 0, earningsToday: 0, totalDeliveries: 0, totalEarnings: 0 } });
+          return;
+        }
         api.clearTokens();
         setToken(null);
-        return;
+      } finally {
+        setLoading(false);
       }
-      setUser(u);
-      refreshFailCountRef.current = 0;
-      scheduleProactiveRefresh(t);
-    }).catch((err: unknown) => {
-      if (err instanceof Error && err.name === "AbortError") return;
-      const errAny = err as Record<string, unknown>;
-      if (errAny.code === "APPROVAL_PENDING") {
-        setUser({ id: "", phone: "", isOnline: false, walletBalance: 0, approvalStatus: "pending", stats: { deliveriesToday: 0, earningsToday: 0, totalDeliveries: 0, totalEarnings: 0 } });
-        return;
-      }
-      if (errAny.code === "APPROVAL_REJECTED") {
-        setUser({ id: "", phone: "", isOnline: false, walletBalance: 0, approvalStatus: "rejected", rejectionReason: (errAny.rejectionReason as string | undefined) ?? null, stats: { deliveriesToday: 0, earningsToday: 0, totalDeliveries: 0, totalEarnings: 0 } });
-        return;
-      }
-      api.clearTokens();
-      setToken(null);
-    }).finally(() => setLoading(false));
+    })();
     return () => { controller.abort(); clearRefreshTimer(); };
   }, [scheduleProactiveRefresh, clearRefreshTimer]);
 

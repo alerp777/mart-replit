@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "../../lib/auth";
 import { api, apiFetch } from "../../lib/api";
 import { riderIsDev } from "../../lib/envValidation";
+import { checkSufficientBalance, checkDailyLimits } from "../../lib/wallet/validation";
 import { usePlatformConfig } from "../../lib/useConfig";
 import { useLanguage } from "../../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -44,6 +45,21 @@ export default function WithdrawModal({
   const T = (key: TranslationKey) => tDual(key, language);
   const currency = config.platform.currencySymbol ?? "Rs.";
   const fc = (n: number) => `${currency} ${Math.round(n).toLocaleString()}`;
+
+  const [todayWithdrawn, setTodayWithdrawn]         = useState(0);
+  const [todayWithdrawCount, setTodayWithdrawCount] = useState(0);
+
+  /* Fetch today's withdrawal totals on mount so checkDailyLimits has real data */
+  useEffect(() => {
+    api.getWalletPage({ limit: 200 }).then(({ items }) => {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayWithdrawals = items.filter(
+        it => it.type === "withdrawal" && (it.createdAt ?? "").startsWith(todayStr),
+      );
+      setTodayWithdrawn(todayWithdrawals.reduce((s, it) => s + (it.amount as number), 0));
+      setTodayWithdrawCount(todayWithdrawals.length);
+    }).catch(() => {});
+  }, []);
 
   const [amount, setAmount]         = useState("");
   const [selectedMethod, setMethod] = useState<PayMethod | null>(null);
@@ -139,7 +155,15 @@ export default function WithdrawModal({
     if (!amount || isNaN(amt) || amt <= 0) { setErr(T("enterValidAmount")); return; }
     if (amt < minPayout) { setErr(`${T("minWithdrawalLabel")}: ${fc(minPayout)}`); return; }
     if (amt > maxPayout) { setErr(`${T("maxWithdrawalLabel")}: ${fc(maxPayout)}`); return; }
-    if (amt > balance)   { setErr(T("enterValidAmount")); return; }
+    const balanceCheck = checkSufficientBalance(balance, amt);
+    if (!balanceCheck.valid) { setErr(T("enterValidAmount")); return; }
+    const walletCfg = config?.wallet ?? {};
+    const maxDailyWithdrawal = typeof walletCfg.maxDailyWithdrawal === "number" ? walletCfg.maxDailyWithdrawal : Infinity;
+    const maxDailyTransactionCount = typeof walletCfg.maxDailyTransactionCount === "number" ? walletCfg.maxDailyTransactionCount : Infinity;
+    if (isFinite(maxDailyWithdrawal) || isFinite(maxDailyTransactionCount)) {
+      const limitsCheck = checkDailyLimits(todayWithdrawn, todayWithdrawCount, amt, { maxDailyWithdrawal, maxDailyTransactionCount });
+      if (!limitsCheck.valid) { setErr(limitsCheck.reason); return; }
+    }
     setErr(""); setStep("method");
   };
 

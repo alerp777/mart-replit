@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bus, Users, CheckCircle, Clock, ChevronRight, AlertCircle, Play, Square, Navigation, TrendingUp, Wallet, Timer } from "lucide-react";
 import { apiFetch } from "../lib/api";
+import { enqueueAction } from "../lib/offline/queueManager";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../lib/auth";
 
@@ -164,7 +165,14 @@ export default function VanDriver() {
       stopGpsBroadcast();
       setSelectedSchedule(null);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      /* Persist to IndexedDB queue so the trip completion survives connectivity loss */
+      const looksLikeNetErr = /network|fetch|timeout|offline/i.test(e?.message || "");
+      if (looksLikeNetErr && selectedSchedule) {
+        enqueueAction("complete_trip", selectedSchedule.id, { date: selectedSchedule.date }).catch(() => {});
+      }
+      setError(e.message);
+    },
   });
 
   /* G6: Surface geolocation errors to the UI rather than swallowing them.

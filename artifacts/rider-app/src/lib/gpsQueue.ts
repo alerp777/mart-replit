@@ -6,6 +6,11 @@
    request cards the rider hides are still hidden when the tab is reopened
    mid-trip, but automatically re-surface after the request has expired. */
 
+import { validateGpsPing, type GpsPing } from "./gps/validation";
+
+/* Last valid ping seen — used by the validator to compute speed between pings */
+let _lastValidPing: GpsPing | null = null;
+
 export interface QueuedPing {
   id: string;
   timestamp: string;
@@ -89,6 +94,27 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function enqueue(ping: QueuedPing): Promise<void> {
+  const result = validateGpsPing(_lastValidPing, {
+    timestamp: ping.timestamp,
+    latitude: ping.latitude,
+    longitude: ping.longitude,
+    accuracy: ping.accuracy,
+    speed: ping.speed,
+    heading: ping.heading,
+  });
+  if (!result.valid) {
+    /* Rejected pings are silently dropped from the queue.
+       The audit log in gps/validation.ts captures the reason. */
+    return;
+  }
+  _lastValidPing = {
+    timestamp: ping.timestamp,
+    latitude: ping.latitude,
+    longitude: ping.longitude,
+    accuracy: ping.accuracy,
+    speed: ping.speed,
+    heading: ping.heading,
+  };
   try {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {

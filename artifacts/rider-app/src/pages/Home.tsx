@@ -24,6 +24,7 @@ import {
   sweepAndLoadDismissed,
   clearAllDismissed,
 } from "../lib/gpsQueue";
+import { enqueueAction } from "../lib/offline/queueManager";
 import { haversineMeters } from "../components/dashboard/helpers";
 import {
   Bike,
@@ -594,6 +595,9 @@ export default function Home() {
         });
         showToast("This order was already accepted by another rider.", "error");
       } else {
+        /* Persist to IndexedDB queue so the accept survives connectivity loss */
+        const looksLikeNetErr = /network|fetch|timeout|offline/i.test(e?.message || "");
+        if (looksLikeNetErr) enqueueAction("accept_order", id, {}).catch(() => {});
         showToast(e.message || "Could not accept order. Please try again.", "error");
       }
     },
@@ -634,6 +638,9 @@ export default function Home() {
         });
         showToast("This ride was already accepted by another rider.", "error");
       } else {
+        /* Persist to IndexedDB queue so the accept survives connectivity loss */
+        const looksLikeNetErr = /network|fetch|timeout|offline/i.test(e?.message || "");
+        if (looksLikeNetErr) enqueueAction("accept_ride", id, {}).catch(() => {});
         showToast(e.message || "Could not accept ride. Please try again.", "error");
       }
     },
