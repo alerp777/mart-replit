@@ -273,7 +273,10 @@ export type AdminAlertType =
   | "daily_summary"
   | "weekly_report"
   | "account_restriction"
-  | "health_critical";
+  | "health_critical"
+  | "data_export"
+  | "security_pattern"
+  | "sentry_new_issue";
 
 export async function sendAdminAlert(
   alertType: AdminAlertType,

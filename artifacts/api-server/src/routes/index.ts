@@ -46,6 +46,7 @@ import weatherConfigRouter from "./weather-config.js";
 import deepLinksPublicRouter from "./deep-links-public.js";
 import legalRouter from "./legal.js";
 import docsRouter from "./docs.js";
+import sentryWebhookRouter from "./sentry-webhook.js";
 import { adminAuth } from "./admin-shared.js";
 import { userApiLimiter } from "../middleware/rate-limit.js";
 
@@ -77,6 +78,9 @@ router.use("/addresses", addressesRouter);
 router.use("/settings", settingsRouter);
 router.use("/seed", seedRouter);
 router.use("/admin/system", systemRouter);
+// Sentry webhook is public (HMAC-verified) — must be mounted BEFORE adminRouter
+// so it is NOT intercepted by adminAuth. The route is POST /admin/sentry-webhook.
+router.use(sentryWebhookRouter);
 // admin-auth-v2 owns the public /api/admin/auth/* surface (forgot-password,
 // reset-password, reset-password/validate). Mount it BEFORE the legacy
 // adminRouter so its public endpoints are not shadowed by adminRouter's

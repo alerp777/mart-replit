@@ -4,7 +4,7 @@ import {
   Shield, Save, RefreshCw, Info, AlertTriangle,
   CheckCircle2, XCircle, Lock,
   KeyRound, FileText, Zap, Bike, BarChart3, Globe,
-  ShieldCheck, Loader2, Users,
+  ShieldCheck, Loader2, Users, Download, Bug,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher, apiAbsoluteFetchRaw } from "@/lib/api";
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Toggle, Field, SecretInput } from "@/components/AdminShared";
 
-type SecTab = "auth" | "authmethods" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud";
+type SecTab = "auth" | "authmethods" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud" | "dataexports";
 
 type SecurityDashboard = Record<string, unknown>;
 
@@ -34,6 +34,16 @@ type MfaStatus = {
   mfaEnabled: boolean;
 };
 
+type DataExportLog = {
+  id: string;
+  userId: string | null;
+  maskedPhone: string | null;
+  ip: string;
+  requestedAt: string;
+  completedAt: string | null;
+  success: boolean;
+};
+
 type MfaSetupData = {
   secret: string;
   qrCodeDataUrl: string;
@@ -47,6 +57,7 @@ const SEC_TABS: { id: SecTab; label: string; emoji: string; active: string; desc
   { id: "passwords",   label: "Passwords",         emoji: "🔑", active: "bg-amber-600",   desc: "Password policy, JWT rotation, token expiry" },
   { id: "uploads",     label: "File Uploads",      emoji: "📁", active: "bg-teal-600",    desc: "Upload limits, allowed file types, compression" },
   { id: "fraud",       label: "Fraud Detection",   emoji: "🚨", active: "bg-red-600",     desc: "Fake orders, IP auto-block, live IP manager, account limits" },
+  { id: "dataexports", label: "Data Exports",      emoji: "📦", active: "bg-violet-600",  desc: "GDPR data export audit log — who exported their data and when, plus suspicious API pattern events" },
 ];
 
 function SecPanel({ title, icon: Icon, color, children }: { title: string; icon: React.ElementType; color: string; children: React.ReactNode }) {
@@ -85,6 +96,14 @@ export default function SecurityPage() {
   const [mfaToken,     setMfaToken]     = useState("");
   const [disableToken, setDisableToken] = useState("");
   const [mfaLoading,   setMfaLoading]  = useState(false);
+
+  /* ── Data Exports tab state ── */
+  const [dataExports,      setDataExports]      = useState<DataExportLog[]>([]);
+  const [dataExportsTotal, setDataExportsTotal]  = useState(0);
+  const [dataExportsLoading, setDataExportsLoading] = useState(false);
+  const [dataExportsPage,  setDataExportsPage]  = useState(0);
+  const DATA_EXPORTS_PAGE_SIZE = 20;
+  const [suspiciousEvents, setSuspiciousEvents]  = useState<SecurityEvent[]>([]);
 
   /* ── Load platform settings ── */
   const loadSettings = useCallback(async () => {
@@ -136,11 +155,30 @@ export default function SecurityPage() {
     }
   }, [toast]);
 
+  /* ── Load data exports and suspicious pattern events ── */
+  const fetchDataExports = useCallback(async (page = 0) => {
+    setDataExportsLoading(true);
+    const offset = page * DATA_EXPORTS_PAGE_SIZE;
+    try {
+      const [exportsData, eventsData] = await Promise.all([
+        apiAbsoluteFetchRaw(`/api/admin/security/data-exports?limit=${DATA_EXPORTS_PAGE_SIZE}&offset=${offset}`),
+        apiAbsoluteFetchRaw(`/api/admin/security-events?limit=50&type=suspicious_pattern`),
+      ]);
+      setDataExports(exportsData.exports ?? []);
+      setDataExportsTotal(exportsData.total ?? 0);
+      setSuspiciousEvents((eventsData.events ?? []).filter((e: SecurityEvent) => e.type === "suspicious_pattern"));
+    } catch (e: unknown) {
+      toast({ title: "Failed to load data exports", description: (e as Error).message, variant: "destructive" });
+    }
+    setDataExportsLoading(false);
+  }, [toast, DATA_EXPORTS_PAGE_SIZE]);
+
   /* ── Auto-load live data when switching to auth or fraud tabs ── */
   useEffect(() => {
     if (secTab === "auth" || secTab === "fraud") fetchLiveData();
     if (secTab === "auth") fetchMfaStatus();
-  }, [secTab, fetchLiveData, fetchMfaStatus]);
+    if (secTab === "dataexports") fetchDataExports();
+  }, [secTab, fetchLiveData, fetchMfaStatus, fetchDataExports]);
 
   /* ── Platform settings handlers ── */
   const handleChange = (key: string, value: string) => {
@@ -1087,11 +1125,256 @@ export default function SecurityPage() {
         </div>
       )}
 
+      {secTab === "dataexports" && (
+        <DataExportsTab
+          dataExports={dataExports}
+          dataExportsTotal={dataExportsTotal}
+          dataExportsLoading={dataExportsLoading}
+          suspiciousEvents={suspiciousEvents}
+          page={dataExportsPage}
+          pageSize={DATA_EXPORTS_PAGE_SIZE}
+          onPageChange={(p) => { setDataExportsPage(p); fetchDataExports(p); }}
+          onRefresh={() => fetchDataExports(dataExportsPage)}
+        />
+      )}
+
       <div className="bg-blue-50/60 border border-blue-200/60 rounded-xl p-4 flex gap-3">
         <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-blue-700">
           <strong className="text-blue-800">Changes apply instantly</strong> after saving — no restart needed.
         </p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   DATA EXPORTS TAB — GDPR export audit + suspicious
+   pattern events
+═══════════════════════════════════════════════════════ */
+function DataExportsTab({
+  dataExports,
+  dataExportsTotal,
+  dataExportsLoading,
+  suspiciousEvents,
+  page,
+  pageSize,
+  onPageChange,
+  onRefresh,
+}: {
+  dataExports: DataExportLog[];
+  dataExportsTotal: number;
+  dataExportsLoading: boolean;
+  suspiciousEvents: SecurityEvent[];
+  page: number;
+  pageSize: number;
+  onPageChange: (p: number) => void;
+  onRefresh: () => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(dataExportsTotal / pageSize));
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString("en-GB", {
+        day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      });
+    } catch { return iso; }
+  };
+
+  const severityBadge = (sev: string) => {
+    const cls: Record<string, string> = {
+      critical: "bg-red-100 text-red-700",
+      high:     "bg-orange-100 text-orange-700",
+      medium:   "bg-yellow-100 text-yellow-700",
+      low:      "bg-gray-100 text-gray-600",
+    };
+    return cls[sev] ?? cls["low"];
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-bold text-gray-900">Data Export Audit Log</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Every GDPR data-export request is logged here with user, IP, and outcome.
+            {dataExportsTotal > 0 && ` (${dataExportsTotal} total records)`}
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRefresh}
+          disabled={dataExportsLoading}
+          className="gap-1.5"
+        >
+          {dataExportsLoading
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <RefreshCw className="w-3.5 h-3.5" />}
+          Refresh
+        </Button>
+      </div>
+
+      {/* Export logs table */}
+      <div className="rounded-2xl border border-border bg-white overflow-hidden">
+        {dataExportsLoading ? (
+          <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Loading export logs…</span>
+          </div>
+        ) : dataExports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+            <Download className="w-8 h-8 opacity-40" />
+            <div className="text-center">
+              <p className="text-sm font-medium">No data exports yet</p>
+              <p className="text-xs mt-1">Records will appear here when users request their data exports.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-gray-50/70">
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">User / Phone</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">IP Address</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Requested At</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Completed At</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {dataExports.map(row => (
+                  <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="font-mono text-gray-700">{row.maskedPhone ?? "—"}</div>
+                      {row.userId && (
+                        <div className="text-gray-400 text-[10px] mt-0.5 truncate max-w-[140px]">{row.userId}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-gray-600">{row.ip}</td>
+                    <td className="px-4 py-3 text-gray-600">{formatDate(row.requestedAt)}</td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {row.completedAt ? formatDate(row.completedAt) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.success ? (
+                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-[10px]">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />Success
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-red-100 text-red-600 hover:bg-red-100 text-[10px]">
+                          <XCircle className="w-3 h-3 mr-1" />Failed
+                        </Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {/* Pagination controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+                <span className="text-xs text-gray-500">
+                  Page {page + 1} of {totalPages} &middot; {dataExportsTotal} total record{dataExportsTotal !== 1 ? "s" : ""}
+                </span>
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onPageChange(page - 1)}
+                    disabled={page === 0 || dataExportsLoading}
+                    className="h-7 px-2 text-xs"
+                  >
+                    ← Prev
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onPageChange(page + 1)}
+                    disabled={page >= totalPages - 1 || dataExportsLoading}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Next →
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Suspicious pattern events */}
+      <div className="rounded-2xl border border-border bg-white overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-border bg-orange-50/50">
+          <AlertTriangle className="w-4 h-4 text-orange-600" />
+          <h4 className="text-sm font-bold text-orange-800">Suspicious API Pattern Events</h4>
+          {suspiciousEvents.length > 0 && (
+            <Badge className="bg-orange-200 text-orange-800 hover:bg-orange-200 text-[10px] ml-auto">
+              {suspiciousEvents.length} event{suspiciousEvents.length !== 1 ? "s" : ""}
+            </Badge>
+          )}
+        </div>
+
+        {suspiciousEvents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-3">
+            <ShieldCheck className="w-7 h-7 opacity-40" />
+            <div className="text-center">
+              <p className="text-sm font-medium">No suspicious patterns detected</p>
+              <p className="text-xs mt-1">
+                Events appear here when an IP exceeds the rate threshold on sensitive endpoints.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-gray-50/70">
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Severity</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Details</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Timestamp</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {suspiciousEvents.map((ev, i) => (
+                  <tr key={i} className="hover:bg-gray-50/60 transition-colors">
+                    <td className="px-4 py-3">
+                      <Badge className={`${severityBadge(ev.severity)} hover:${severityBadge(ev.severity)} text-[10px] capitalize`}>
+                        {ev.severity}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700 max-w-xs">
+                      <span className="truncate block">{ev.details}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">{formatDate(ev.timestamp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Sentry Known Issues info card */}
+      <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Bug className="w-4 h-4 text-violet-600" />
+          <h4 className="text-sm font-bold text-violet-800">Sentry Webhook Deduplication</h4>
+        </div>
+        <p className="text-xs text-violet-700 leading-relaxed">
+          When a new Sentry error type (unique fingerprint) arrives at{" "}
+          <code className="bg-violet-100 px-1 rounded font-mono text-[10px]">POST /api/admin/sentry-webhook</code>,
+          it is recorded in the <code className="bg-violet-100 px-1 rounded font-mono text-[10px]">sentry_known_issues</code> table
+          and an admin alert is sent. Subsequent occurrences of the same fingerprint are silently acknowledged.
+        </p>
+        <div className="flex items-start gap-2 bg-violet-100/70 rounded-xl p-3 text-xs text-violet-700">
+          <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            To enable: add <strong>SENTRY_WEBHOOK_SECRET</strong> to Replit Secrets, then configure the webhook URL in
+            Sentry → Project Settings → Integrations → Webhooks.
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -142,6 +142,30 @@ All credentials and secrets are managed via **Replit Secrets** (the padlock icon
 **New required secret:**
 - `ENCRYPTION_MASTER_KEY` — required to use PII encryption (add in Replit Secrets panel, minimum 16 characters)
 
+### Security Pattern Detection & Alerting (Task #3 — 2025)
+
+| Area | What changed |
+|---|---|
+| **Data export audit** | `POST /api/users/export-data` now writes a record to `data_export_logs` table (user_id, masked phone, IP, timestamps, success). Fires email + Slack alert to admins after each successful export. |
+| **Data exports admin view** | `GET /api/admin/security/data-exports` endpoint. "Data Exports" tab added to the Security Dashboard page, paginated, sorted by date. |
+| **Suspicious pattern detector** | `suspiciousPatternDetector` Express middleware tracks request counts per IP per minute across sensitive path prefixes (`/api/auth`, `/api/users/lookup`, `/api/admin`). Exceeding the configurable threshold (platform setting `security_suspicious_pattern_threshold`, default 60 req/min) logs a `suspicious_pattern` security event and fires an email + Slack alert. Snooze-aware to prevent spam from a single attacker IP. |
+| **Suspicious pattern events** | Visible in the Security Dashboard "Data Exports" tab alongside data export logs. |
+| **Sentry webhook** | `POST /api/admin/sentry-webhook` — HMAC-verified (SHA-256 using `SENTRY_WEBHOOK_SECRET`). On new error fingerprint: inserts to `sentry_known_issues` table and fires admin alert. On known fingerprint: silently acknowledges and updates `last_seen_at`. |
+| **New DB tables** | `data_export_logs`, `sentry_known_issues` — created at startup via `ensureSecurityTables()`. |
+
+**New secrets — add in Replit Secrets panel:**
+- `SENTRY_WEBHOOK_SECRET` — shared secret for verifying Sentry webhook payloads (HMAC-SHA256). Set the same value in Sentry: Project Settings → Integrations → Webhooks → Secret.
+
+**Sentry webhook setup:**
+1. Add `SENTRY_WEBHOOK_SECRET` to Replit Secrets (any strong random string).
+2. In Sentry: Project Settings → Integrations → Webhooks → Add Webhook.
+3. URL: `https://<your-domain>/api/admin/sentry-webhook`
+4. Events: check **Issue** (created).
+5. Secret: same value as `SENTRY_WEBHOOK_SECRET`.
+
+**New platform setting:**
+- `security_suspicious_pattern_threshold` — integer, req/min per IP on sensitive paths before alert fires (default: 60).
+
 ### Validation and Support Scripts
 The API server includes a `check-permissions` validation script used by the Replit workflow, and the monorepo includes launcher scripts for Replit, Codespaces, VPS, and local development.
 

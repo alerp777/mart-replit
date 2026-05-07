@@ -24,10 +24,12 @@ import {
 import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.service.js";
 import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
 import { ensureErrorResolutionTables } from "./routes/error-reports.js";
+import { ensureSecurityTables } from "./services/securityTablesMigration.js";
 import { startHealthMonitor } from "./services/healthAlertMonitor.js";
 import { recordResponseTime } from "./lib/metrics/responseTime.js";
 import router from "./routes/index.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
+import { suspiciousPatternDetector } from "./middleware/suspiciousPatternDetector.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -123,6 +125,12 @@ export async function runStartupTasks(): Promise<void> {
     console.log("[startup] error-monitor supplementary tables ready");
   } catch (err) {
     console.error("[startup] error-monitor table migration failed (continuing):", err);
+  }
+  try {
+    await ensureSecurityTables();
+    console.log("[startup] security pattern tables ready");
+  } catch (err) {
+    console.error("[startup] security table migration failed (continuing):", err);
   }
   // Upsert default platform settings so every section in the Admin
   // App Settings page shows live data immediately — without overwriting
@@ -392,6 +400,7 @@ export function createServer() {
   }
 
   app.use("/api", globalLimiter);
+  app.use("/api", suspiciousPatternDetector);
   app.use("/api", router);
 
   /* ── JSON 404 for unmatched /api/* routes ─────────────────────────────── */

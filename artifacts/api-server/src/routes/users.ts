@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable, pharmacyOrdersTable, parcelBookingsTable } from "@workspace/db/schema";
+import { usersTable, ordersTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable, pharmacyOrdersTable, parcelBookingsTable, dataExportLogsTable } from "@workspace/db/schema";
 import { eq, desc, and, count, sql, isNull, ne, gte } from "drizzle-orm";
-import { getPlatformSettings } from "./admin-shared.js";
+import { getPlatformSettings, getCachedSettings } from "./admin-shared.js";
 import { customerAuth, anyUserAuth, getClientIp, writeAuthAuditLog, checkLockout, recordFailedAttempt, resetAttempts } from "../middleware/security.js";
 import { randomUUID, createHash } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
@@ -12,6 +12,8 @@ import { generateId } from "../lib/id.js";
 import { z } from "zod";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 import { paymentLimiter, globalLimiter } from "../middleware/rate-limit.js";
+import { sendAdminAlert } from "../services/email.js";
+import { logger } from "../lib/logger.js";
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
@@ -163,6 +165,26 @@ router.post("/export-data", globalLimiter, async (req, res) => {
     return;
   }
 
+  const ip        = getClientIp(req);
+  const userAgent = req.headers["user-agent"] as string | undefined;
+
+  const maskedPhone = user.phone
+    ? user.phone.replace(/(\+?\d{1,4})\d+(\d{2})$/, "$1****$2")
+    : null;
+
+  const logId = generateId();
+  const requestedAt = new Date();
+
+  db.insert(dataExportLogsTable).values({
+    id:          logId,
+    userId,
+    ip,
+    userAgent:   userAgent ?? null,
+    requestedAt,
+    success:     false,
+    maskedPhone,
+  }).catch((e: Error) => logger.warn({ err: e.message }, "[data-export] Failed to insert export log"));
+
   let orders: any[], rides: any[], walletHistory: any[], addresses: any[], pharmacyOrders: any[], parcelBookings: any[];
   try {
     [orders, rides, walletHistory, addresses, pharmacyOrders, parcelBookings] = await Promise.all([
@@ -179,7 +201,7 @@ router.post("/export-data", globalLimiter, async (req, res) => {
   }
 
   const exportData = {
-    exportedAt: new Date().toISOString(),
+    exportedAt: requestedAt.toISOString(),
     profile: {
       id: user.id,
       phone: user.phone,
@@ -244,8 +266,51 @@ router.post("/export-data", globalLimiter, async (req, res) => {
     })),
   };
 
-  const ip = getClientIp(req);
-  writeAuthAuditLog("data_export", { userId, ip, userAgent: req.headers["user-agent"] as string });
+  const completedAt = new Date();
+
+  writeAuthAuditLog("data_export", { userId, ip, userAgent, metadata: { maskedPhone } });
+
+  db.update(dataExportLogsTable)
+    .set({ success: true, completedAt })
+    .where(eq(dataExportLogsTable.id, logId))
+    .catch((e: Error) => logger.warn({ err: e.message }, "[data-export] Failed to update export log"));
+
+  getCachedSettings().then(settings => {
+    const appName  = settings["app_name"] ?? "AJKMart";
+    const adminUrl = (settings["admin_base_url"] ?? settings["app_base_url"] ?? "").replace(/\/$/, "");
+    const dashLink = adminUrl ? `${adminUrl}/admin/security` : "";
+    const subject  = `Data Export Request — User ${userId.slice(-8).toUpperCase()}`;
+    const htmlBody = `
+      <h3 style="color:#1e40af;margin:0 0 12px;">📦 GDPR Data Export Triggered</h3>
+      <p style="color:#374151;margin:0 0 16px;">A user has exported their personal data from ${appName}.</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr><td style="padding:6px 0;color:#6b7280;width:140px;">User ID</td>
+            <td style="padding:6px 0;font-family:monospace;font-size:12px;">${userId}</td></tr>
+        <tr><td style="padding:6px 0;color:#6b7280;">Phone</td>
+            <td style="padding:6px 0;font-family:monospace;">${maskedPhone ?? "—"}</td></tr>
+        <tr><td style="padding:6px 0;color:#6b7280;">IP Address</td>
+            <td style="padding:6px 0;font-family:monospace;">${ip}</td></tr>
+        <tr><td style="padding:6px 0;color:#6b7280;">Timestamp</td>
+            <td style="padding:6px 0;">${completedAt.toUTCString()}</td></tr>
+      </table>
+      ${dashLink ? `<p><a href="${dashLink}" style="background:#1e40af;color:#fff;padding:10px 18px;
+         border-radius:6px;text-decoration:none;font-size:14px;font-weight:600;display:inline-block;">
+        View Data Exports →</a></p>` : ""}
+    `;
+    sendAdminAlert("data_export", subject, htmlBody, settings).catch(
+      (e: Error) => logger.warn({ err: e.message }, "[data-export] Email alert failed"),
+    );
+    const slackWebhook = settings["health_alert_slack_webhook"]?.trim() ?? "";
+    if (slackWebhook) {
+      fetch(slackWebhook, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          text: `📦 ${appName} — GDPR data export by user ${userId.slice(-8).toUpperCase()} (phone: ${maskedPhone ?? "—"}, IP: ${ip})`,
+        }),
+      }).catch((e: Error) => logger.warn({ err: e.message }, "[data-export] Slack alert failed"));
+    }
+  }).catch((e: Error) => logger.warn({ err: e.message }, "[data-export] Settings fetch failed"));
 
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Content-Disposition", `attachment; filename="ajkmart-data-export-${userId.slice(-8)}.json"`);
