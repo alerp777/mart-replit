@@ -20,6 +20,7 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/comp
 import { CommandPalette } from "@/components/CommandPalette";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useLanguage } from "@/lib/useLanguage";
 import { useAdminAuth } from "@/lib/adminAuthContext";
@@ -55,6 +56,12 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { language, setLanguage, loading: langLoading } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const globalSearchRef = useRef<HTMLInputElement>(null);
+
+  useKeyboardShortcuts({
+    onOpenSearch: () => { globalSearchRef.current?.focus(); },
+    onCloseModal: () => { setIsMobileMenuOpen(false); setUserMenuOpen(false); setLangOpen(false); },
+  });
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     const active = NAV_GROUPS.find(g => g.items.some(i => isActivePath(location, i.href)));
@@ -776,7 +783,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
           {/* Center: global search + ⌘K hint */}
           <div className="hidden sm:flex items-center gap-2 relative">
-            <GlobalSearch />
+            <GlobalSearch inputRef={globalSearchRef} />
             <button
               onClick={() => setCmdOpen(true)}
               aria-label="Open command palette (⌘K)"

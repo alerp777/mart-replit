@@ -342,30 +342,72 @@ export default function Dashboard() {
 
       {/* Quick Actions */}
       <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-border/30 flex items-center justify-between bg-card">
+        <div className="px-4 sm:px-6 py-4 border-b border-border/30 bg-card">
           <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
             <Zap className="w-4 h-4 text-amber-500" /> Quick Actions
           </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Jump directly to common tasks</p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-0 divide-x divide-y divide-border/30">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 divide-x divide-y divide-border/30">
           {[
-            { label: "Orders",      href: "/orders",       icon: ShoppingBag, color: "text-amber-600",  bg: "hover:bg-amber-50" },
-            { label: "Users",       href: "/users",        icon: Users,       color: "text-blue-600",   bg: "hover:bg-blue-50" },
-            { label: "Riders",      href: "/riders",       icon: Car,         color: "text-indigo-600", bg: "hover:bg-indigo-50" },
-            { label: "Withdrawals", href: "/withdrawals",  icon: Wallet,      color: "text-green-600",  bg: "hover:bg-green-50" },
-            { label: "KYC",         href: "/kyc",          icon: Trophy,      color: "text-teal-600",   bg: "hover:bg-teal-50" },
-            { label: "Analytics",   href: "/analytics",    icon: TrendingUp,  color: "text-pink-600",   bg: "hover:bg-pink-50" },
-            { label: "Settings",    href: "/settings",     icon: Settings,    color: "text-slate-600",  bg: "hover:bg-slate-50" },
-            { label: "SOS Alerts",  href: "/sos-alerts",   icon: AlertTriangle, color: "text-red-600", bg: "hover:bg-red-50" },
+            {
+              label: "Assign Rider",
+              sub: "Unassigned rides",
+              href: "/rides?status=unassigned",
+              icon: Car,
+              color: "text-indigo-600",
+              bg: "hover:bg-indigo-50",
+            },
+            {
+              label: "Approve Deposit",
+              sub: "Pending approvals",
+              href: "/deposit-requests?status=pending",
+              icon: Wallet,
+              color: "text-green-600",
+              bg: "hover:bg-green-50",
+            },
+            {
+              label: "Review KYC",
+              sub: "Awaiting verification",
+              href: "/kyc?status=pending",
+              icon: Trophy,
+              color: "text-teal-600",
+              bg: "hover:bg-teal-50",
+            },
+            {
+              label: "Send Broadcast",
+              sub: "Push / SMS / email",
+              href: "/communications?tab=compose",
+              icon: AlertTriangle,
+              color: "text-orange-600",
+              bg: "hover:bg-orange-50",
+            },
+            {
+              label: "Process Withdrawal",
+              sub: "Pending payouts",
+              href: "/withdrawals?status=pending",
+              icon: ArrowRight,
+              color: "text-purple-600",
+              bg: "hover:bg-purple-50",
+            },
+            {
+              label: "View Live Map",
+              sub: "Real-time riders",
+              href: "/live-riders-map",
+              icon: TrendingUp,
+              color: "text-pink-600",
+              bg: "hover:bg-pink-50",
+            },
           ].map(action => (
             <Link key={action.href} href={action.href}>
-              <div className={`flex flex-col items-center justify-center gap-2 p-4 cursor-pointer transition-colors ${action.bg} group`}>
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center bg-white border border-border/50 shadow-sm group-hover:shadow transition-shadow`}>
+              <div className={`flex items-center gap-3 p-4 cursor-pointer transition-colors ${action.bg} group min-h-[72px]`}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-border/50 shadow-sm group-hover:shadow transition-shadow shrink-0">
                   <action.icon className={`w-4 h-4 ${action.color}`} />
                 </div>
-                <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors text-center leading-tight">
-                  {action.label}
-                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground leading-tight truncate">{action.label}</p>
+                  <p className="text-xs text-muted-foreground truncate">{action.sub}</p>
+                </div>
               </div>
             </Link>
           ))}

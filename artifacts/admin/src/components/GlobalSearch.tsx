@@ -12,6 +12,33 @@ interface SearchResult {
   type: "user" | "order" | "rider";
 }
 
+interface AdminUserRecord {
+  id: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+}
+
+interface AdminOrderRecord {
+  id: string;
+  status?: string;
+  type?: string;
+}
+
+interface AdminRiderRecord {
+  id: string;
+  name?: string;
+  phone?: string;
+  status?: string;
+}
+
+interface AdminListResponse<T> {
+  data?: T[];
+  users?: T[];
+  orders?: T[];
+  riders?: T[];
+}
+
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -22,16 +49,17 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 const TYPE_CONFIG = {
-  user:  { icon: User,        label: "Users",  color: "text-blue-600",  bg: "bg-blue-50",  href: (id: string) => `/users?highlight=${id}` },
-  order: { icon: ShoppingBag, label: "Orders", color: "text-amber-600", bg: "bg-amber-50", href: (id: string) => `/orders?highlight=${id}` },
-  rider: { icon: Bike,        label: "Riders", color: "text-green-600", bg: "bg-green-50", href: (id: string) => `/riders?highlight=${id}` },
+  user:  { icon: User,        label: "Users",  color: "text-blue-600",  bg: "bg-blue-50" },
+  order: { icon: ShoppingBag, label: "Orders", color: "text-amber-600", bg: "bg-amber-50" },
+  rider: { icon: Bike,        label: "Riders", color: "text-green-600", bg: "bg-green-50" },
 };
 
 interface GlobalSearchProps {
   inputRef?: React.RefObject<HTMLInputElement>;
+  onClose?: () => void;
 }
 
-export function GlobalSearch({ inputRef: externalRef }: GlobalSearchProps) {
+export function GlobalSearch({ inputRef: externalRef, onClose }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,29 +76,30 @@ export function GlobalSearch({ inputRef: externalRef }: GlobalSearchProps) {
     if (!q || q.length < 2) { setResults([]); setLoading(false); return; }
     setLoading(true);
     try {
+      const encoded = encodeURIComponent(q);
       const [usersRaw, ordersRaw, ridersRaw] = await Promise.allSettled([
-        fetcher(`/admin/users?search=${encodeURIComponent(q)}&limit=3`),
-        fetcher(`/orders?search=${encodeURIComponent(q)}&limit=3`),
-        fetcher(`/admin/riders?search=${encodeURIComponent(q)}&limit=3`),
+        fetcher(`/users?search=${encoded}&limit=3`) as Promise<AdminListResponse<AdminUserRecord>>,
+        fetcher(`/orders?search=${encoded}&limit=3`) as Promise<AdminListResponse<AdminOrderRecord>>,
+        fetcher(`/riders?search=${encoded}&limit=3`) as Promise<AdminListResponse<AdminRiderRecord>>,
       ]);
 
       const mapped: SearchResult[] = [];
 
       if (usersRaw.status === "fulfilled") {
         const users = usersRaw.value?.users ?? usersRaw.value?.data ?? [];
-        for (const u of (users as any[]).slice(0, 3)) {
+        for (const u of users.slice(0, 3)) {
           mapped.push({ id: u.id, type: "user", label: u.name || u.phone || u.id, sub: u.phone ?? u.email, href: `/users?highlight=${u.id}` });
         }
       }
       if (ordersRaw.status === "fulfilled") {
         const orders = ordersRaw.value?.orders ?? ordersRaw.value?.data ?? [];
-        for (const o of (orders as any[]).slice(0, 3)) {
-          mapped.push({ id: o.id, type: "order", label: `Order #${o.id?.slice(-8) ?? o.id}`, sub: o.status ?? o.type, href: `/orders?highlight=${o.id}` });
+        for (const o of orders.slice(0, 3)) {
+          mapped.push({ id: o.id, type: "order", label: `Order #${o.id.slice(-8)}`, sub: o.status ?? o.type, href: `/orders?highlight=${o.id}` });
         }
       }
       if (ridersRaw.status === "fulfilled") {
         const riders = ridersRaw.value?.riders ?? ridersRaw.value?.data ?? [];
-        for (const r of (riders as any[]).slice(0, 3)) {
+        for (const r of riders.slice(0, 3)) {
           mapped.push({ id: r.id, type: "rider", label: r.name || r.phone || r.id, sub: r.phone ?? r.status, href: `/riders?highlight=${r.id}` });
         }
       }
@@ -101,18 +130,24 @@ export function GlobalSearch({ inputRef: externalRef }: GlobalSearchProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+    onClose?.();
+  }, [onClose]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!open || results.length === 0) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, results.length - 1)); }
     if (e.key === "ArrowUp")   { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, -1)); }
     if (e.key === "Enter" && activeIdx >= 0) {
       const item = results[activeIdx];
-      if (item) { navigate(item.href); setOpen(false); setQuery(""); }
+      if (item) { navigate(item.href); close(); }
     }
-    if (e.key === "Escape") { setOpen(false); setQuery(""); inputRef.current?.blur(); }
+    if (e.key === "Escape") { close(); inputRef.current?.blur(); }
   };
 
-  const grouped = {
+  const grouped: Record<"user" | "order" | "rider", SearchResult[]> = {
     user:  results.filter(r => r.type === "user"),
     order: results.filter(r => r.type === "order"),
     rider: results.filter(r => r.type === "rider"),
@@ -137,10 +172,10 @@ export function GlobalSearch({ inputRef: externalRef }: GlobalSearchProps) {
           aria-autocomplete="list"
           aria-expanded={open}
         />
-        {query && (
+        {query && !loading && (
           <button
             type="button"
-            onClick={() => { setQuery(""); setOpen(false); }}
+            onClick={() => close()}
             className="absolute right-2 p-0.5 rounded hover:bg-muted transition-colors"
             aria-label="Clear search"
           >
@@ -148,7 +183,7 @@ export function GlobalSearch({ inputRef: externalRef }: GlobalSearchProps) {
           </button>
         )}
         {loading && (
-          <Loader2 className="absolute right-2 w-3.5 h-3.5 text-muted-foreground animate-spin" />
+          <Loader2 className="absolute right-2 w-3.5 h-3.5 text-muted-foreground animate-spin pointer-events-none" />
         )}
       </div>
 
@@ -189,7 +224,7 @@ export function GlobalSearch({ inputRef: externalRef }: GlobalSearchProps) {
                             isActive ? "bg-muted" : "hover:bg-muted/50",
                           )}
                           onMouseEnter={() => setActiveIdx(globalIdx)}
-                          onClick={() => { navigate(item.href); setOpen(false); setQuery(""); }}
+                          onClick={() => { navigate(item.href); close(); }}
                         >
                           <div className={cn("w-6 h-6 rounded-full flex items-center justify-center shrink-0", cfg.bg)}>
                             <Icon className={cn("w-3 h-3", cfg.color)} />
