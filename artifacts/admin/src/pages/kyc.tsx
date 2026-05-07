@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheck, Clock, XCircle, AlertCircle, CheckCircle,
   User, Phone, CreditCard, MapPin, Calendar, Eye,
-  Filter, RefreshCw, X, ChevronDown, Search,
+  Filter, RefreshCw, X, ChevronDown, Search, Download,
   ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2,
   Car, FileText,
 } from "lucide-react";
@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { apiAbsoluteFetchRaw } from "@/lib/api";
 import { SafeImage } from "@/components/ui/SafeImage";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 const STATUS_CONFIG = {
   pending:  { label: "Pending Review", color: "text-amber-700",  bg: "bg-amber-100",  border: "border-amber-300",  dot: "bg-amber-400",  Icon: Clock },
@@ -40,6 +41,16 @@ type KycRecord = {
   user?: { name: string; phone: string; email: string; avatar?: string; roles?: string };
   riderProfile?: RiderProfile | null;
 };
+
+function exportKycCSV(records: KycRecord[]) {
+  const header = "ID,UserID,Name,Phone,CNIC,Status,City,Submitted";
+  const lines = records.map(r =>
+    [r.id, r.userId, r.userName ?? r.user?.name ?? "", r.userPhone ?? r.user?.phone ?? "", r.cnic ?? "", r.status, r.city ?? "", r.submittedAt?.slice(0, 10) ?? ""].join(",")
+  );
+  const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `kyc-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
+}
 
 function PhotoModal({ url, label, onClose }: { url: string; label?: string; onClose: () => void }) {
   const [zoom, setZoom] = useState(1);
@@ -438,6 +449,7 @@ export default function KycPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<KycRecord | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   /* Debounce search input */
   useEffect(() => {
@@ -455,6 +467,13 @@ export default function KycPage() {
     },
     refetchInterval: 30000,
   });
+
+  useEffect(() => { if (data) setLastRefreshed(new Date()); }, [data]);
+  useEffect(() => {
+    const handler = () => setSelected(null);
+    window.addEventListener("admin:close-modal", handler);
+    return () => window.removeEventListener("admin:close-modal", handler);
+  }, []);
 
   const records = data?.records ?? [];
   const counts = {
@@ -508,12 +527,16 @@ export default function KycPage() {
                 </button>
               )}
             </div>
+            <button onClick={() => exportKycCSV(records)} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition">
+              <Download size={14} /> CSV
+            </button>
             <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition">
               <RefreshCw size={14} /> Refresh
             </button>
           </div>
         }
       />
+      <LastUpdated dataUpdatedAt={lastRefreshed?.getTime() ?? 0} className="text-xs text-gray-400 -mt-3 mb-1" />
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

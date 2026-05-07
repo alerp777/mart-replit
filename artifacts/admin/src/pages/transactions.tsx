@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTransactions } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,10 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Receipt, TrendingUp, TrendingDown, DollarSign, Search, RefreshCw, User, Download, CalendarDays } from "lucide-react";
+import { Receipt, TrendingUp, TrendingDown, DollarSign, Search, RefreshCw, User, Download, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { PageHeader, StatCard, FilterBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 function exportTxnCSV(txns: any[]) {
   const header = "ID,User,Phone,Type,Amount,Description,Date";
@@ -52,6 +53,34 @@ export default function Transactions() {
   const filteredCredits = filtered.filter((t: any) => t.type === "credit").reduce((s: number, t: any) => s + Number(t.amount), 0);
   const filteredDebits  = filtered.filter((t: any) => t.type === "debit").reduce((s: number, t: any) => s + Number(t.amount), 0);
 
+  type TxnSortKey = "userName" | "type" | "amount" | "createdAt";
+  const [sortKey, setSortKey] = useState<TxnSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
+  useEffect(() => { if (data) setLastRefreshed(new Date()); }, [data]);
+
+  const handleTxnSort = (key: TxnSortKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const sortedFiltered = useMemo(() => {
+    if (!sortKey) return filtered;
+    return [...filtered].sort((a: any, b: any) => {
+      let av: any = a[sortKey], bv: any = b[sortKey];
+      if (sortKey === "amount")     { av = Number(av); bv = Number(bv); }
+      else if (sortKey === "createdAt") { av = new Date(av).getTime(); bv = new Date(bv).getTime(); }
+      else { av = String(av ?? "").toLowerCase(); bv = String(bv ?? "").toLowerCase(); }
+      return (av < bv ? -1 : av > bv ? 1 : 0) * (sortDir === "asc" ? 1 : -1);
+    });
+  }, [filtered, sortKey, sortDir]);
+
+  function TxnSortIcon({ col }: { col: TxnSortKey }) {
+    if (sortKey !== col) return <ArrowUpDown className="w-3 h-3 opacity-40 inline ml-1" />;
+    return sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-primary inline ml-1" /> : <ArrowDown className="w-3 h-3 text-primary inline ml-1" />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -62,7 +91,8 @@ export default function Transactions() {
         iconColorClass="text-sky-600"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportTxnCSV(filtered)} className="h-9 rounded-xl gap-2">
+            <LastUpdated dataUpdatedAt={lastRefreshed?.getTime() ?? 0} />
+            <Button variant="outline" size="sm" onClick={() => exportTxnCSV(sortedFiltered)} className="h-9 rounded-xl gap-2">
               <Download className="w-4 h-4" /> {T("csvExport")}
             </Button>
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
@@ -226,20 +256,20 @@ export default function Transactions() {
             <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead>{T("txnId")}</TableHead>
-                <TableHead>{T("user")}</TableHead>
+                <TableHead><button onClick={() => handleTxnSort("userName")} className="flex items-center gap-1 hover:text-foreground">{T("user")}<TxnSortIcon col="userName" /></button></TableHead>
                 <TableHead>{T("description")}</TableHead>
-                <TableHead>{T("type")}</TableHead>
-                <TableHead className="text-right">{T("amount")}</TableHead>
-                <TableHead className="text-right">{T("date")}</TableHead>
+                <TableHead><button onClick={() => handleTxnSort("type")} className="flex items-center gap-1 hover:text-foreground">{T("type")}<TxnSortIcon col="type" /></button></TableHead>
+                <TableHead className="text-right"><button onClick={() => handleTxnSort("amount")} className="flex items-center gap-1 hover:text-foreground ml-auto">{T("amount")}<TxnSortIcon col="amount" /></button></TableHead>
+                <TableHead className="text-right"><button onClick={() => handleTxnSort("createdAt")} className="flex items-center gap-1 hover:text-foreground ml-auto">{T("date")}<TxnSortIcon col="createdAt" /></button></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">{T("loading")}</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
+              ) : sortedFiltered.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">{T("noTransactions")}</TableCell></TableRow>
               ) : (
-                filtered.map((t: any) => (
+                sortedFiltered.map((t: any) => (
                   <TableRow key={t.id} className="hover:bg-muted/30">
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {t.id.slice(-8).toUpperCase()}

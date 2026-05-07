@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/shared";
 import {
   BanknoteIcon, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock, Filter, CheckSquare,
-  Wallet, AlertTriangle, PartyPopper, Inbox, Landmark,
+  Wallet, AlertTriangle, PartyPopper, Inbox, Landmark, Download,
 } from "lucide-react";
 import { useWithdrawalRequests, useApproveWithdrawal, useRejectWithdrawal, useBatchApproveWithdrawals, useBatchRejectWithdrawals } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +14,8 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { formatCurrency } from "@/lib/format";
 import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 const fc = formatCurrency;
 const fd = (d: string | Date) =>
@@ -69,12 +71,6 @@ function methodIcon(method: string | null | undefined): string {
   return "💳";
 }
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === "pending")  return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs font-bold gap-1"><Clock className="w-3 h-3" /> Pending</Badge>;
-  if (status === "paid")     return <Badge className="bg-green-100 text-green-700 border-0 text-xs font-bold gap-1"><CheckCircle className="w-3 h-3" /> Paid</Badge>;
-  if (status === "rejected") return <Badge className="bg-red-100 text-red-700 border-0 text-xs font-bold gap-1"><XCircle className="w-3 h-3" /> Rejected</Badge>;
-  return <Badge className="bg-gray-100 text-gray-600 border-0 text-xs">{status}</Badge>;
-}
 
 function roleColor(role: string) {
   if (role === "vendor") return "bg-orange-100 text-orange-700";
@@ -205,6 +201,16 @@ function RejectModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
   );
 }
 
+function exportWithdrawalsCSV(rows: Withdrawal[]) {
+  const header = "ID,User,Phone,Role,Method,Amount,Status,Date";
+  const lines = rows.map(w =>
+    [w.id, w.user?.name ?? "", w.user?.phone ?? "", w.user?.role ?? "", methodLabel(w.paymentMethod ?? null), Number(w.amount).toFixed(2), w.status, new Date(w.createdAt).toISOString().slice(0, 10)].join(",")
+  );
+  const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `withdrawals-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
+}
+
 export default function Withdrawals() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -220,6 +226,8 @@ export default function Withdrawals() {
   const batchApprove = useBatchApproveWithdrawals();
   const batchReject  = useBatchRejectWithdrawals();
   const { toast } = useToast();
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  useEffect(() => { if (data) setLastRefreshed(new Date()); }, [data]);
 
   const withdrawals: Withdrawal[] = data?.withdrawals || [];
 
@@ -271,9 +279,15 @@ export default function Withdrawals() {
         iconBgClass="bg-purple-100"
         iconColorClass="text-purple-600"
         actions={
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="w-4 h-4 mr-2"/> {T("refresh")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <LastUpdated dataUpdatedAt={lastRefreshed?.getTime() ?? 0} />
+            <Button variant="outline" size="sm" onClick={() => exportWithdrawalsCSV(filtered)} className="h-9 rounded-xl gap-2">
+              <Download className="w-4 h-4" /> CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 rounded-xl gap-2">
+              <RefreshCw className="w-4 h-4"/> {T("refresh")}
+            </Button>
+          </div>
         }
       />
 

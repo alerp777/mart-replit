@@ -60,7 +60,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
   useKeyboardShortcuts({
     onOpenSearch: () => { globalSearchRef.current?.focus(); },
-    onCloseModal: () => { setIsMobileMenuOpen(false); setUserMenuOpen(false); setLangOpen(false); },
+    onCloseModal: () => { setIsMobileMenuOpen(false); setUserMenuOpen(false); setLangOpen(false); window.dispatchEvent(new CustomEvent("admin:close-modal")); },
     onNewItem: () => { window.dispatchEvent(new CustomEvent("admin:new-item")); },
   });
 
