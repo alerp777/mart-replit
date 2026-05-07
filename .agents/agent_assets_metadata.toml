@@ -6,3 +6,9 @@ id = "4ORQw7Nt_A0MZh3fLvf9E"
 uri = "file://screenshots/otp-control-full.jpg"
 type = "image"
 title = "OTP Control Center — Full Page Design"
+
+[[outputs]]
+id = "jadjF245UeNgAA3uR9QAl"
+uri = "file://ajkmart.md"
+type = "text"
+title = "AJKMart Super-App — Complete 360° Documentation Book"
