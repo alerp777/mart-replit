@@ -25,6 +25,7 @@ import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.se
 import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
 import { ensureErrorResolutionTables } from "./routes/error-reports.js";
 import { ensureSecurityTables } from "./services/securityTablesMigration.js";
+import { ensureCartSnapshotTable } from "./services/cartSnapshotMigration.js";
 import { startHealthMonitor } from "./services/healthAlertMonitor.js";
 import { recordResponseTime } from "./lib/metrics/responseTime.js";
 import router from "./routes/index.js";
@@ -131,6 +132,12 @@ export async function runStartupTasks(): Promise<void> {
     console.log("[startup] security pattern tables ready");
   } catch (err) {
     console.error("[startup] security table migration failed (continuing):", err);
+  }
+  try {
+    await ensureCartSnapshotTable();
+    console.log("[startup] cart_snapshots table ready");
+  } catch (err) {
+    console.error("[startup] cart_snapshots table migration failed (continuing):", err);
   }
   // Upsert default platform settings so every section in the Admin
   // App Settings page shows live data immediately — without overwriting

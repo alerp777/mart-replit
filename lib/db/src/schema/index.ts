@@ -90,3 +90,4 @@ export * from "./order_audit_log";
 export * from "./product_stock_history";
 export * from "./data_export_logs";
 export * from "./sentry_known_issues";
+export * from "./cart_snapshots";

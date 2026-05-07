@@ -47,6 +47,7 @@ import deepLinksPublicRouter from "./deep-links-public.js";
 import legalRouter from "./legal.js";
 import docsRouter from "./docs.js";
 import sentryWebhookRouter from "./sentry-webhook.js";
+import cartRouter from "./cart.js";
 import { adminAuth } from "./admin-shared.js";
 import { userApiLimiter } from "../middleware/rate-limit.js";
 
@@ -67,6 +68,7 @@ if (process.env["ADMIN_LEGACY_AUTH_DISABLED"] !== "1") {
 router.use("/users", usersRouter);
 router.use("/products", productsRouter);
 router.use("/orders", userApiLimiter, ordersRouter);
+router.use("/cart", userApiLimiter, cartRouter);
 router.use("/wallet", userApiLimiter, walletRouter);
 router.use("/rides", userApiLimiter, ridesRouter);
 router.use("/locations", locationsRouter);

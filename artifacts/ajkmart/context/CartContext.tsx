@@ -55,6 +55,58 @@ const CartContext = createContext<CartContextType | null>(null);
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
+/* ── Cart snapshot helpers ──────────────────────────────────────────────────
+   All three functions are fire-and-forget: they never throw and never affect
+   the local cart state. Token is passed explicitly so we don't close over a
+   potentially-stale ref inside useEffect. */
+
+async function saveCartSnapshot(items: CartItem[], token: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/cart/snapshot`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ items }),
+    });
+  } catch {
+    /* silently swallowed — local cart is source of truth */
+  }
+}
+
+async function fetchCartSnapshot(token: string): Promise<CartItem[] | null> {
+  try {
+    const res = await fetch(`${API_BASE}/cart/snapshot`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = unwrapApiResponse<{ items?: CartItem[] }>(await res.json());
+    return Array.isArray(data.items) && data.items.length > 0 ? data.items : null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearCartSnapshot(token: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/cart/snapshot`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    /* silently swallowed */
+  }
+}
+
+/* ── Debounce helper ── */
+function makeDebounced<T extends unknown[]>(fn: (...args: T) => void, delay: number) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const debounced = (...args: T) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; fn(...args); }, delay);
+  };
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  return { debounced, cancel };
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { token, socket } = useAuth();
   const { symbol: currencySymbol } = useCurrency();
@@ -77,6 +129,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
      is discarded rather than silently overwriting the user's changes. */
   const cartGenRef = useRef(0);
 
+  /* Debounced server snapshot save (800 ms) with cancel support. */
+  const debouncedSaveRef = useRef<((...args: [CartItem[], string]) => void) | null>(null);
+  const cancelDebouncedSaveRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const { debounced, cancel } = makeDebounced(
+      (cartItems: CartItem[], tkn: string) => { saveCartSnapshot(cartItems, tkn); },
+      800,
+    );
+    debouncedSaveRef.current = debounced;
+    cancelDebouncedSaveRef.current = cancel;
+    return () => { cancel(); };
+  }, []);
+
+  /* Stable ref so the token-change effect can read hasLoaded without
+     adding it to the dependency array (avoids prevTokenRef drift). */
+  const hasLoadedRef = useRef(false);
+  useEffect(() => { hasLoadedRef.current = hasLoaded; }, [hasLoaded]);
+
   useEffect(() => {
     authTokenRef.current = token;
   }, [token]);
@@ -87,11 +157,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setItems(prev => {
         const newItems = updater(prev);
         AsyncStorage.setItem("@ajkmart_cart", JSON.stringify(newItems));
+        /* Debounced server sync — only when logged in */
+        if (authTokenRef.current && debouncedSaveRef.current) {
+          debouncedSaveRef.current(newItems, authTokenRef.current);
+        }
         return newItems;
       });
     } else {
       setItems(updater);
       AsyncStorage.setItem("@ajkmart_cart", JSON.stringify(updater));
+      if (authTokenRef.current && debouncedSaveRef.current) {
+        debouncedSaveRef.current(updater, authTokenRef.current);
+      }
     }
   };
 
@@ -109,6 +186,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setPendingAck(false);
     setItems([]);
     AsyncStorage.removeItem("@ajkmart_cart");
+    /* Clear server snapshot when order is acknowledged */
+    if (authTokenRef.current) {
+      clearCartSnapshot(authTokenRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -147,6 +228,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setItems(current => {
         const remaining = current.filter(i => i.type !== "pharmacy");
         AsyncStorage.setItem("@ajkmart_cart", JSON.stringify(remaining));
+        /* Sync the updated cart (pharmacy items removed) to server */
+        if (authTokenRef.current) {
+          saveCartSnapshot(remaining, authTokenRef.current);
+        }
         return remaining;
       });
     };
@@ -158,6 +243,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     };
   }, [socket]);
 
+  /* ── Load local cart from AsyncStorage on mount ── */
   useEffect(() => {
     const timer = setTimeout(() => {
       AsyncStorage.getItem("@ajkmart_cart").then(stored => {
@@ -175,15 +261,77 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, []);
 
+  /* ── Server snapshot restore / merge when user logs in or on boot ── */
   const prevTokenRef = useRef<string | null | undefined>(token);
+  const snapshotRestoredRef = useRef(false);
+
   useEffect(() => {
-    if (prevTokenRef.current && !token) {
+    const prevToken = prevTokenRef.current;
+    prevTokenRef.current = token;
+
+    if (prevToken && !token) {
+      /* Logout — cancel any pending debounced save, clear local cart */
+      if (cancelDebouncedSaveRef.current) cancelDebouncedSaveRef.current();
       resetAckState();
+      snapshotRestoredRef.current = false;
       setItems([]);
       AsyncStorage.removeItem("@ajkmart_cart");
+      return;
     }
-    prevTokenRef.current = token;
+
+    if (token && !prevToken && !snapshotRestoredRef.current) {
+      /* Fresh login — if local storage hasn't finished hydrating yet,
+         defer to the boot-restore effect (which has hasLoaded in its deps).
+         snapshotRestoredRef stays false so the boot restore fires. */
+      if (!hasLoadedRef.current) return;
+
+      /* Three-way merge:
+         1. local non-empty           → keep local, push to server immediately
+         2. local empty + server data → restore from server
+         3. both empty                → no-op */
+      snapshotRestoredRef.current = true;
+      fetchCartSnapshot(token).then(serverItems => {
+        setItems(localItems => {
+          if (localItems.length > 0) {
+            /* Local wins — push local up to server regardless of server state */
+            saveCartSnapshot(localItems, token);
+            return localItems;
+          }
+          if (serverItems && serverItems.length > 0) {
+            /* Local is empty and server has data — restore silently */
+            AsyncStorage.setItem("@ajkmart_cart", JSON.stringify(serverItems));
+            return serverItems;
+          }
+          return localItems;
+        });
+      });
+    }
   }, [token]);
+
+  /* ── On initial app boot with a pre-existing session, restore once ── */
+  useEffect(() => {
+    if (!hasLoaded || snapshotRestoredRef.current) return;
+    if (!token) return;
+    /* Three-way merge on boot (same rules as login path):
+       1. local non-empty           → keep local, push to server immediately
+       2. local empty + server data → restore from server
+       3. both empty                → no-op */
+    snapshotRestoredRef.current = true;
+    fetchCartSnapshot(token).then(serverItems => {
+      setItems(localItems => {
+        if (localItems.length > 0) {
+          /* Local wins — ensure server is up to date immediately */
+          saveCartSnapshot(localItems, token);
+          return localItems;
+        }
+        if (serverItems && serverItems.length > 0) {
+          AsyncStorage.setItem("@ajkmart_cart", JSON.stringify(serverItems));
+          return serverItems;
+        }
+        return localItems;
+      });
+    });
+  }, [hasLoaded, token]);
 
   useEffect(() => {
     if (hasLoaded && items.length > 0) {
