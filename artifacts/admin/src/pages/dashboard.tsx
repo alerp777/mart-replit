@@ -377,7 +377,7 @@ export default function Dashboard() {
             {
               label: "Send Broadcast",
               sub: "Push / SMS / email",
-              href: "/communications?tab=compose",
+              href: "/communications?tab=send",
               icon: AlertTriangle,
               color: "text-orange-600",
               bg: "hover:bg-orange-50",

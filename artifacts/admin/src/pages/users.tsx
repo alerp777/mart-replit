@@ -1657,12 +1657,6 @@ export default function Users() {
     return () => clearTimeout(t);
   }, [search]);
   useEffect(() => { setCurrentPage(1); }, [conditionTier, statusFilter, debouncedSearch, roleFilter, dateFrom, dateTo]);
-  useEffect(() => { if (!isLoading && data) setLastRefreshed(Date.now()); }, [data, isLoading]);
-  useEffect(() => {
-    const handler = () => setCreateUserOpen(true);
-    window.addEventListener("admin:new-item", handler);
-    return () => window.removeEventListener("admin:new-item", handler);
-  }, []);
   const { data, isLoading, refetch, isFetching, isError, error } = useUsers({
     conditionTier: conditionTier !== "all" ? conditionTier : undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
@@ -1673,6 +1667,7 @@ export default function Users() {
     page: currentPage,
     limit: PAGE_SIZE,
   });
+  useEffect(() => { if (!isLoading && data) setLastRefreshed(Date.now()); }, [data, isLoading]);
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const updateMutation         = useUpdateUser();
   const securityUpdateMutation = useUpdateUserSecurity();
@@ -1695,6 +1690,12 @@ export default function Users() {
   const [addressUser, setAddressUser]   = useState<any>(null);
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
   const [createUserOpen, setCreateUserOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setCreateUserOpen(true);
+    window.addEventListener("admin:new-item", handler);
+    return () => window.removeEventListener("admin:new-item", handler);
+  }, []);
 
   const pendingUsers = pendingData?.users || [];
 
