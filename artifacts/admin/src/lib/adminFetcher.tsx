@@ -169,11 +169,15 @@ export async function fetchAdmin(
     // Handle 401 Unauthorized
     if (response.status === 401) {
       // Try to refresh token once
+      // Hoist retrySignal so the catch block can inspect .reason (the browser
+      // surfaces an AbortError / DOMException, not a TimeoutError, when fetch
+      // is aborted by the controller — only signal.reason reveals our intent).
+      let retrySignal!: AbortSignal;
       try {
         const newToken = await refreshToken!();
         headers['Authorization'] = `Bearer ${newToken}`;
 
-        const retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
+        retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
         // Retry the request with new token
         const retryResponse = await fetch(`/api/admin${endpoint}`, {
           ...options,
@@ -190,9 +194,16 @@ export async function fetchAdmin(
       } catch (err) {
         // A timeout on the retry should surface a toast, not force logout.
         // Only genuine auth failures (401/403 from the server) should redirect.
-        if (err instanceof TimeoutError) {
-          handleTimeoutError(err);
-          throw err;
+        const retryReason = retrySignal
+          ? (retrySignal as AbortSignal & { reason?: unknown }).reason
+          : undefined;
+        const timeoutErr =
+          err instanceof TimeoutError ? err
+          : retryReason instanceof TimeoutError ? retryReason
+          : null;
+        if (timeoutErr) {
+          handleTimeoutError(timeoutErr);
+          throw timeoutErr;
         }
         console.error('Token refresh failed:', err);
         const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
@@ -275,16 +286,24 @@ export async function fetchAdminAbsolute(
   }
 
   if (response.status === 401) {
+    let absRetrySignal!: AbortSignal;
     try {
       const newToken = await refreshToken!();
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
-      response = await fetch(path, { ...options, signal: retrySignal, headers, credentials: 'include' });
+      absRetrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
+      response = await fetch(path, { ...options, signal: absRetrySignal, headers, credentials: 'include' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (err) {
-      if (err instanceof TimeoutError) {
-        handleTimeoutError(err);
-        throw err;
+      const retryReason = absRetrySignal
+        ? (absRetrySignal as AbortSignal & { reason?: unknown }).reason
+        : undefined;
+      const timeoutErr =
+        err instanceof TimeoutError ? err
+        : retryReason instanceof TimeoutError ? retryReason
+        : null;
+      if (timeoutErr) {
+        handleTimeoutError(timeoutErr);
+        throw timeoutErr;
       }
       console.error('Token refresh failed (absolute):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
@@ -354,15 +373,23 @@ export async function fetchAdminAbsoluteResponse(
   }
 
   if (response.status === 401) {
+    let respRetrySignal!: AbortSignal;
     try {
       const newToken = await refreshToken!();
       baseHeaders['Authorization'] = `Bearer ${newToken}`;
-      const retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
-      response = await fetch(path, { ...options, signal: retrySignal, headers: baseHeaders, credentials: 'include' });
+      respRetrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
+      response = await fetch(path, { ...options, signal: respRetrySignal, headers: baseHeaders, credentials: 'include' });
     } catch (err) {
-      if (err instanceof TimeoutError) {
-        handleTimeoutError(err);
-        throw err;
+      const retryReason = respRetrySignal
+        ? (respRetrySignal as AbortSignal & { reason?: unknown }).reason
+        : undefined;
+      const timeoutErr =
+        err instanceof TimeoutError ? err
+        : retryReason instanceof TimeoutError ? retryReason
+        : null;
+      if (timeoutErr) {
+        handleTimeoutError(timeoutErr);
+        throw timeoutErr;
       }
       console.error('Token refresh failed (response):', err);
       safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
