@@ -11,6 +11,7 @@ import {
   communicationFlagsTable,
   communicationRolesTable,
   aiModerationLogsTable,
+  chatReportsTable,
 } from "@workspace/db/schema";
 import { eq, and, or, desc, sql, lt, count, gt, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
@@ -1043,6 +1044,59 @@ router.get("/calls/history", async (req: any, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: "Failed to get call history" });
+  }
+});
+
+/* ── POST /communication/block — Block a user ── */
+router.post("/block", async (req: any, res: any) => {
+  const userId = (req.user as { id: string }).id;
+  const { blockedUserId } = req.body as { blockedUserId?: string };
+  if (!blockedUserId || typeof blockedUserId !== "string") {
+    return res.status(400).json({ error: "blockedUserId required" });
+  }
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS communication_user_blocks (
+        id TEXT PRIMARY KEY,
+        blocker_id TEXT NOT NULL,
+        blocked_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(blocker_id, blocked_id)
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO communication_user_blocks (id, blocker_id, blocked_id)
+      VALUES (${generateId()}, ${userId}, ${blockedUserId})
+      ON CONFLICT (blocker_id, blocked_id) DO NOTHING
+    `);
+    res.json({ data: { blocked: true } });
+  } catch (e: unknown) {
+    logger.error({ err: e }, "[comm] block failed");
+    res.status(500).json({ error: "Failed to block user" });
+  }
+});
+
+/* ── POST /communication/report — Report a user ── */
+router.post("/report", async (req: any, res: any) => {
+  const userId = (req.user as { id: string }).id;
+  const { reportedUserId, reason, messageId } = req.body as { reportedUserId?: string; reason?: string; messageId?: string };
+  if (!reportedUserId || !reason) {
+    return res.status(400).json({ error: "reportedUserId and reason required" });
+  }
+  try {
+    await db.insert(chatReportsTable).values({
+      id: generateId(),
+      reporterId: userId,
+      reportedUserId,
+      messageId: messageId ?? null,
+      reason: String(reason).slice(0, 500),
+      status: "pending",
+      createdAt: new Date(),
+    });
+    res.json({ data: { reported: true } });
+  } catch (e: unknown) {
+    logger.error({ err: e }, "[comm] report failed");
+    res.status(500).json({ error: "Failed to report user" });
   }
 });
 

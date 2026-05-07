@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Target, BarChart2, Star, TrendingUp, CheckCircle,
   Wallet, ClipboardList, CreditCard, ChevronDown, RefreshCw, Pencil, X,
+  UtensilsCrossed, Package, Car,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -36,7 +37,9 @@ export default function Earnings() {
     refetchInterval: 60000,
   });
 
-  const periodData = data?.[period] || { earnings: 0, deliveries: 0 };
+  type PeriodBreakdown = { food: { earnings: number; count: number }; parcel: { earnings: number; count: number }; rides: { earnings: number; count: number } };
+  type PeriodData = { earnings: number; deliveries: number; breakdown?: PeriodBreakdown };
+  const periodData: PeriodData = data?.[period as keyof typeof data] as PeriodData || { earnings: 0, deliveries: 0 };
 
   const adminDailyGoal = config.rider?.dailyGoal ?? 0;
   const personalDailyGoal: number | null = data?.dailyGoal ?? user?.dailyGoal ?? null;
@@ -241,6 +244,28 @@ export default function Earnings() {
             </div>
           </div>
         </div>
+
+        {!isLoading && !isError && periodData.breakdown && (
+          <div className="bg-white rounded-3xl shadow-sm p-5 border border-gray-100">
+            <p className="font-bold text-gray-800 text-sm mb-3.5 flex items-center gap-1.5">
+              <BarChart2 size={14} className="text-gray-900"/> By Service Type
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Food",   icon: <UtensilsCrossed size={16} className="text-orange-500"/>, earnings: periodData.breakdown.food.earnings,   count: periodData.breakdown.food.count,   bg: "bg-orange-50", text: "text-orange-600" },
+                { label: "Parcel", icon: <Package         size={16} className="text-blue-500"/>,   earnings: periodData.breakdown.parcel.earnings, count: periodData.breakdown.parcel.count, bg: "bg-blue-50",   text: "text-blue-600" },
+                { label: "Rides",  icon: <Car             size={16} className="text-purple-500"/>, earnings: periodData.breakdown.rides.earnings,  count: periodData.breakdown.rides.count,  bg: "bg-purple-50", text: "text-purple-600" },
+              ].map(item => (
+                <div key={item.label} className={`${item.bg} rounded-2xl p-3.5 text-center`}>
+                  <div className="flex items-center justify-center mb-2">{item.icon}</div>
+                  <p className={`text-base font-extrabold ${item.text}`}>{formatCurrency(item.earnings)}</p>
+                  <p className="text-[9px] text-gray-500 font-semibold mt-0.5">{item.count} jobs</p>
+                  <p className="text-[9px] text-gray-400 font-bold">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {!isLoading && (
           <Accordion type="single" collapsible defaultValue="breakdown">

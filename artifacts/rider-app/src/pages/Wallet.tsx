@@ -329,6 +329,7 @@ export default function Wallet() {
   const weekEarned     = transactions.filter(t => t.type === "credit" && new Date(t.createdAt) >= weekAgo).reduce((s, t) => s + Number(t.amount), 0);
   const totalEarned    = transactions.filter(t => t.type === "credit" || t.type === "bonus").reduce((s, t) => s + Number(t.amount), 0);
   const totalWithdrawn = transactions.filter(t => t.type === "debit" && !t.reference?.startsWith("refund:")).reduce((s, t) => s + Number(t.amount), 0);
+  const promoBalance   = useMemo(() => transactions.filter(t => ["bonus", "cashback", "loyalty"].includes(t.type)).reduce((s, t) => s + Math.max(0, Number(t.amount)), 0), [transactions]);
 
   const withdrawalRequests = transactions.filter(t =>
     t.type === "debit" && t.description?.startsWith("Withdrawal") && !t.reference?.startsWith("refund:")
@@ -499,7 +500,7 @@ export default function Wallet() {
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5 mb-5">
+          <div className="grid grid-cols-3 gap-2.5 mb-3">
             <div className="bg-white/[0.06] backdrop-blur-sm rounded-2xl px-3 py-2.5 border border-white/[0.06]">
               <p className="text-[9px] text-white/30 uppercase tracking-wider font-bold">{T("earnedToday")}</p>
               <p className="text-sm font-black text-green-400 mt-0.5">{balanceHidden ? "••••" : fc(todayEarned, currency)}</p>
@@ -513,6 +514,21 @@ export default function Wallet() {
               <p className="text-sm font-black text-red-400 mt-0.5">{fc(totalWithdrawn, currency)}</p>
             </div>
           </div>
+
+          {promoBalance > 0 && (
+            <div className="mb-5 bg-gradient-to-br from-purple-600/25 to-indigo-600/20 backdrop-blur-sm rounded-2xl px-4 py-3.5 border border-purple-400/20 flex items-center justify-between">
+              <div>
+                <p className="text-[9px] text-purple-300 uppercase tracking-wider font-bold flex items-center gap-1">
+                  <Sparkles size={9}/> Promo Balance
+                </p>
+                <p className="text-xl font-black text-white mt-0.5">{balanceHidden ? "••••" : fc(promoBalance, currency)}</p>
+                <p className="text-[9px] text-white/30 mt-0.5">Bonuses · Cashback · Loyalty</p>
+              </div>
+              <div className="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-400/20 flex items-center justify-center flex-shrink-0">
+                <Sparkles size={16} className="text-purple-300"/>
+              </div>
+            </div>
+          )}
 
           {minBalance > 0 && balance < minBalance && (
             <div className="mb-4 bg-amber-500/15 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 border border-amber-500/15">

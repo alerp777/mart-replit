@@ -1932,6 +1932,7 @@ router.get("/earnings", async (req, res) => {
     todayRides,  weekRides,  monthRides,
     todayBonus,  weekBonus,  monthBonus,
     profileRow,
+    todayFoodOrders, weekFoodOrders, monthFoodOrders,
   ] = await Promise.all([
     db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.updatedAt, today))),
     db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.updatedAt, weekAgo))),
@@ -1944,6 +1945,10 @@ router.get("/earnings", async (req, res) => {
     db.select({ s: sum(walletTransactionsTable.amount) }).from(walletTransactionsTable).where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "bonus"), gte(walletTransactionsTable.createdAt, weekAgo))),
     db.select({ s: sum(walletTransactionsTable.amount) }).from(walletTransactionsTable).where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "bonus"), gte(walletTransactionsTable.createdAt, monthAgo))),
     db.select({ dailyGoal: riderProfilesTable.dailyGoal }).from(riderProfilesTable).where(eq(riderProfilesTable.userId, riderId)).limit(1),
+    /* Food order breakdown */
+    db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), eq(ordersTable.type, "food"), gte(ordersTable.updatedAt, today))),
+    db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), eq(ordersTable.type, "food"), gte(ordersTable.updatedAt, weekAgo))),
+    db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), eq(ordersTable.type, "food"), gte(ordersTable.updatedAt, monthAgo))),
   ]);
 
   const todayTotal = (safeNum(todayOrders[0]?.s) + safeNum(todayRides[0]?.s)) * riderKeepPct + safeNum(todayBonus[0]?.s);
@@ -1952,10 +1957,28 @@ router.get("/earnings", async (req, res) => {
 
   const personalDailyGoal = profileRow[0]?.dailyGoal ? parseFloat(String(profileRow[0].dailyGoal)) : null;
 
+  function mkBreakdown(
+    allOrders: typeof todayOrders,
+    foodOrders: typeof todayFoodOrders,
+    rides: typeof todayRides,
+  ) {
+    const foodEarnings   = parseFloat((safeNum(foodOrders[0]?.s) * riderKeepPct).toFixed(2));
+    const foodCount      = Number(foodOrders[0]?.c ?? 0);
+    const parcelEarnings = parseFloat((Math.max(0, safeNum(allOrders[0]?.s) - safeNum(foodOrders[0]?.s)) * riderKeepPct).toFixed(2));
+    const parcelCount    = Math.max(0, Number(allOrders[0]?.c ?? 0) - foodCount);
+    const ridesEarnings  = parseFloat((safeNum(rides[0]?.s) * riderKeepPct).toFixed(2));
+    const ridesCount     = Number(rides[0]?.c ?? 0);
+    return {
+      food:   { earnings: foodEarnings,   count: foodCount   },
+      parcel: { earnings: parcelEarnings, count: parcelCount },
+      rides:  { earnings: ridesEarnings,  count: ridesCount  },
+    };
+  }
+
   sendSuccess(res, {
-    today:  { earnings: parseFloat(todayTotal.toFixed(2)), deliveries: (todayOrders[0]?.c ?? 0) + (todayRides[0]?.c ?? 0) },
-    week:   { earnings: parseFloat(weekTotal.toFixed(2)),  deliveries: (weekOrders[0]?.c  ?? 0) + (weekRides[0]?.c  ?? 0) },
-    month:  { earnings: parseFloat(monthTotal.toFixed(2)), deliveries: (monthOrders[0]?.c ?? 0) + (monthRides[0]?.c ?? 0) },
+    today:  { earnings: parseFloat(todayTotal.toFixed(2)), deliveries: (todayOrders[0]?.c ?? 0) + (todayRides[0]?.c ?? 0), breakdown: mkBreakdown(todayOrders, todayFoodOrders, todayRides) },
+    week:   { earnings: parseFloat(weekTotal.toFixed(2)),  deliveries: (weekOrders[0]?.c  ?? 0) + (weekRides[0]?.c  ?? 0), breakdown: mkBreakdown(weekOrders,  weekFoodOrders,  weekRides)  },
+    month:  { earnings: parseFloat(monthTotal.toFixed(2)), deliveries: (monthOrders[0]?.c ?? 0) + (monthRides[0]?.c ?? 0), breakdown: mkBreakdown(monthOrders, monthFoodOrders, monthRides) },
     dailyGoal: personalDailyGoal,
   });
 });
@@ -2046,8 +2069,14 @@ router.get("/wallet/transactions", async (req, res) => {
     }), "utf8").toString("base64");
   }
 
+  const [promoRow] = await db.select({ s: sum(walletTransactionsTable.amount) })
+    .from(walletTransactionsTable)
+    .where(and(eq(walletTransactionsTable.userId, riderId), sql`${walletTransactionsTable.type} IN ('bonus', 'cashback', 'loyalty')`));
+  const promoBalance = parseFloat(safeNum(promoRow?.s).toFixed(2));
+
   sendSuccess(res, {
     balance: safeNum(user.walletBalance),
+    promoBalance,
     items: page.map(t => ({ ...t, amount: safeNum(t.amount) })),
     nextCursor,
     limit,

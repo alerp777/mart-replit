@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   AlertTriangle, Camera, MapPin, Phone, Package, ShoppingCart,
   UtensilsCrossed, Bike, Car, User, CheckCircle, X, RefreshCw,
@@ -614,6 +615,17 @@ function CallButton({ name, phone, label }: { name?: string | null; phone?: stri
       className="flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-sm font-bold px-4 py-3 rounded-xl shadow-md shadow-green-200 transition-all active:scale-[0.97]">
       <Phone size={14}/> {label || `Call ${name || "Customer"}`}
     </a>
+  );
+}
+
+function ChatButton({ name }: { name?: string | null }) {
+  const [, navigate] = useLocation();
+  return (
+    <button
+      onClick={() => navigate("/chat")}
+      className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-bold px-4 py-3 rounded-xl shadow-md shadow-blue-200 transition-all active:scale-[0.97]">
+      <MessageSquare size={14}/> Chat {(name || "").split(" ")[0] || "Customer"}
+    </button>
   );
 }
 
@@ -1645,9 +1657,10 @@ export default function Active() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <NavButton label={T("navigateLabel")} lat={order.deliveryLat} lng={order.deliveryLng} address={order.deliveryAddress} color="blue" />
                     <CallButton name={order.customerName} phone={order.customerPhone} />
+                    <ChatButton name={order.customerName} />
                   </div>
 
                   {riderPos && order.deliveryLat != null && order.deliveryLng != null && (
@@ -1849,13 +1862,14 @@ export default function Active() {
                 <EstimatedArrivalBadge riderPos={riderPos} pickupLat={ride.pickupLat} pickupLng={ride.pickupLng} vehicleType={ride.type} />
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {ride.status === "accepted" ? (
                   <NavButton label="Go to Pickup" lat={ride.pickupLat} lng={ride.pickupLng} address={ride.pickupAddress} color="orange" />
                 ) : (
                   <NavButton label="Go to Drop" lat={ride.dropLat} lng={ride.dropLng} address={ride.dropAddress} color="blue" />
                 )}
                 <CallButton name={ride.customerName} phone={ride.customerPhone} />
+                <ChatButton name={ride.customerName} />
               </div>
               {/* Turn-by-turn OSRM navigation */}
               {riderPos && ride.status === "accepted" && ride.pickupLat != null && ride.pickupLng != null && (

@@ -519,7 +519,7 @@ export const api = {
     const qs = params.toString();
     return apiFetch(`/rider/history${qs ? `?${qs}` : ""}`);
   },
-  getEarnings:  (): Promise<{ today: { earnings: number; deliveries: number }; week: { earnings: number; deliveries: number }; month: { earnings: number; deliveries: number }; dailyGoal: number | null }> => apiFetch("/rider/earnings"),
+  getEarnings:  (): Promise<{ today: { earnings: number; deliveries: number; breakdown?: { food: { earnings: number; count: number }; parcel: { earnings: number; count: number }; rides: { earnings: number; count: number } } }; week: { earnings: number; deliveries: number; breakdown?: { food: { earnings: number; count: number }; parcel: { earnings: number; count: number }; rides: { earnings: number; count: number } } }; month: { earnings: number; deliveries: number; breakdown?: { food: { earnings: number; count: number }; parcel: { earnings: number; count: number }; rides: { earnings: number; count: number } } }; dailyGoal: number | null }> => apiFetch("/rider/earnings"),
   getMyReviews: () => apiFetch("/rider/reviews"),
 
   /* Location */

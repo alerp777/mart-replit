@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Paperclip, MoreVertical, Flag, UserX, X, Bot, Send, Trash2, Sparkles } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { useSocket } from "../lib/socket";
 import { playRequestSound, stopSound } from "../lib/notificationSound";
-import { Bot, Send, Trash2, Sparkles } from "lucide-react";
 
 interface OtherUser { id: string; name: string | null; ajkId: string | null; }
 interface Conversation { id: string; otherUser: OtherUser; lastMessage: { content: string } | null; unreadCount: number; lastMessageAt: string | null; }
-interface Message { id: string; content: string; senderId: string; messageType: string; createdAt: string; deliveryStatus: string; voiceNoteUrl?: string; }
+interface Message { id: string; content: string; senderId: string; messageType: string; createdAt: string; deliveryStatus: string; voiceNoteUrl?: string; imageUrl?: string; fileUrl?: string; fileName?: string; }
 interface CommRequest { id: string; status: string; sender?: { name: string; ajkId: string }; }
 interface SearchResult { id: string; name: string; ajkId: string; role: string; }
 interface IncomingCallData { callId: string; callerId: string; callerName?: string; callerAjkId?: string; }
@@ -41,7 +41,14 @@ export default function Chat() {
   const [aiLoading, setAiLoading] = useState(false);
   const aiScrollRef = useRef<HTMLDivElement>(null);
 
+  /* File upload + overflow menu state */
+  const [uploading, setUploading] = useState(false);
+  const [showConvMenu, setShowConvMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -73,7 +80,7 @@ export default function Chat() {
       const otherId = selectedConv?.otherUser?.id;
       if (otherId && socket) socket.emit("comm:call:end", { callId, targetUserId: otherId });
     }
-    /* Clean up peer connection, media streams, and timer (S6) */
+    /* Clean up peer connection, media streams, and timer */
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
@@ -96,9 +103,8 @@ export default function Chat() {
     trickleIceRef.current = null;
   }, [callId, callTimer, selectedConv, socket]);
 
-  /* Bug fix: keep a ref that always points at the latest endCall so socket
-     event handlers registered on mount don't capture a stale closure
-     (where callId and callTimer would still be their initial null/0 values). */
+  /* Keep a ref that always points at the latest endCall so socket
+     event handlers registered on mount don't capture a stale closure. */
   const endCallRef = useRef(endCall);
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
@@ -120,8 +126,6 @@ export default function Chat() {
       setIncomingCall(data);
       playRequestSound();
     });
-    /* Use endCallRef so these handlers always call the latest endCall, even
-       after callId / callTimer have changed since the socket was connected. */
     socket.on("comm:call:ended", () => { stopSound(); endCallRef.current(); });
     socket.on("comm:call:rejected", () => { stopSound(); endCallRef.current(); });
     socket.on("comm:call:offer", async (data: CallSignal) => {
@@ -165,6 +169,7 @@ export default function Chat() {
 
   const selectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
+    setShowConvMenu(false);
     if (socket) socket.emit("join", `conversation:${conv.id}`);
     try {
       const msgs = await api.apiFetch(`/communication/conversations/${conv.id}/messages`);
@@ -190,6 +195,65 @@ export default function Chat() {
       setSendError((e as Error)?.message || "Failed to send message");
     }
     setSending(false);
+  };
+
+  /* ── File / image attachment ── */
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedConv) return;
+    setUploading(true);
+    setSendError(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const uploaded = await api.uploadFile({ file: base64, filename: file.name, mimeType: file.type });
+      const isImage = file.type.startsWith("image/");
+      const msg = await api.apiFetch(`/communication/conversations/${selectedConv.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({
+          content: isImage ? "[image]" : `[file: ${file.name}]`,
+          messageType: isImage ? "image" : "file",
+          ...(isImage ? { imageUrl: uploaded.url } : { fileUrl: uploaded.url, fileName: file.name }),
+        }),
+      });
+      setMessages(prev => [...prev, msg]);
+      loadConversations();
+      setTimeout(() => scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight), 100);
+    } catch (e) {
+      setSendError((e as Error)?.message || "Failed to upload file");
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  /* ── Block user ── */
+  const handleBlock = async () => {
+    if (!selectedConv) return;
+    setShowConvMenu(false);
+    try {
+      await api.apiFetch("/communication/block", { method: "POST", body: JSON.stringify({ blockedUserId: selectedConv.otherUser.id }) });
+      setSelectedConv(null);
+      loadConversations();
+    } catch (e) {
+      setSendError((e as Error)?.message || "Failed to block user");
+    }
+  };
+
+  /* ── Report user ── */
+  const handleReport = async () => {
+    if (!selectedConv || !reportReason.trim()) return;
+    setShowReportModal(false);
+    try {
+      await api.apiFetch("/communication/report", { method: "POST", body: JSON.stringify({ reportedUserId: selectedConv.otherUser.id, reason: reportReason }) });
+      setReportReason("");
+      setSendError(null);
+    } catch (e) {
+      setSendError((e as Error)?.message || "Failed to report user");
+    }
   };
 
   const searchUser = async () => {
@@ -415,19 +479,49 @@ export default function Chat() {
       <div className={`flex-1 overflow-y-auto px-4 ${tab === "ai" && !selectedConv ? "flex flex-col" : ""}`} ref={tab === "ai" ? undefined : scrollRef}>
         {selectedConv ? (
           <div className="flex flex-col h-full">
+            {/* Conversation header */}
             <div className="flex items-center gap-3 py-3 border-b mb-3">
-              <button onClick={() => setSelectedConv(null)} className="text-emerald-500 font-bold">← Back</button>
+              <button onClick={() => { setSelectedConv(null); setShowConvMenu(false); }} className="text-emerald-500 font-bold">← Back</button>
               <div className="flex-1">
                 <p className="font-bold text-gray-800">{selectedConv.otherUser?.name || "User"}</p>
                 <p className="text-xs text-gray-400">{selectedConv.otherUser?.ajkId}</p>
               </div>
               <button onClick={() => startCall(selectedConv.otherUser?.id)} className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center text-lg">📞</button>
+              <div className="relative">
+                <button onClick={() => setShowConvMenu(v => !v)} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors">
+                  <MoreVertical size={18} className="text-gray-600"/>
+                </button>
+                {showConvMenu && (
+                  <div className="absolute right-0 top-12 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 min-w-[160px] overflow-hidden">
+                    <button
+                      onClick={() => { setShowConvMenu(false); setShowReportModal(true); }}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                      <Flag size={15} className="text-amber-500"/> Report User
+                    </button>
+                    <button
+                      onClick={handleBlock}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 active:bg-red-100 border-t border-gray-100 transition-colors">
+                      <UserX size={15}/> Block User
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Message list */}
             <div className="flex-1 overflow-y-auto space-y-2 pb-2">
               {messages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.senderId === user?.id ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${msg.senderId === user?.id ? "bg-emerald-500 text-white rounded-br-md" : "bg-gray-100 text-gray-800 rounded-bl-md"}`}>
-                    <p className="text-sm">{msg.content}</p>
+                    {msg.messageType === "image" && msg.imageUrl ? (
+                      <img src={msg.imageUrl} alt="Shared image" className="max-w-full rounded-lg mb-1 max-h-48 object-cover" />
+                    ) : msg.messageType === "file" && msg.fileUrl ? (
+                      <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 text-sm underline ${msg.senderId === user?.id ? "text-emerald-100" : "text-blue-600"}`}>
+                        <Paperclip size={13}/> {msg.fileName || "File"}
+                      </a>
+                    ) : (
+                      <p className="text-sm">{msg.content}</p>
+                    )}
                     <span className={`text-[10px] ${msg.senderId === user?.id ? "text-emerald-200" : "text-gray-400"}`}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       {msg.senderId === user?.id && (msg.deliveryStatus === "read" ? " ✓✓" : " ✓")}
@@ -567,14 +661,76 @@ export default function Chat() {
       {selectedConv && (
         <div className="p-4 border-t bg-white">
           {sendError && (
-            <div className="mb-3 p-3 bg-red-50 rounded-lg text-red-600 text-sm">
-              {sendError}
-              <button onClick={() => setSendError(null)} className="ml-2 text-red-700 font-bold">✕</button>
+            <div className="mb-3 p-3 bg-red-50 rounded-lg text-red-600 text-sm flex items-center justify-between">
+              <span>{sendError}</span>
+              <button onClick={() => setSendError(null)} className="text-red-700 font-bold ml-2"><X size={14}/></button>
             </div>
           )}
-          <div className="flex gap-2">
-            <input value={input} onChange={e => { setInput(e.target.value); socket?.emit("comm:typing:start", { conversationId: selectedConv.id, userId: user?.id }); }} onBlur={() => socket?.emit("comm:typing:stop", { conversationId: selectedConv.id, userId: user?.id })} placeholder="Type a message..." className="flex-1 h-12 px-4 rounded-xl border outline-none" onKeyDown={e => e.key === "Enter" && sendMessage()} />
+          <div className="flex gap-2 items-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*,application/pdf,.doc,.docx,.txt"
+              onChange={handleFileSelect}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="h-12 w-12 flex-shrink-0 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center disabled:opacity-50 active:bg-gray-200 transition-colors"
+              title="Attach file or image">
+              {uploading
+                ? <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"/>
+                : <Paperclip size={18}/>
+              }
+            </button>
+            <input
+              value={input}
+              onChange={e => {
+                setInput(e.target.value);
+                socket?.emit("comm:typing:start", { conversationId: selectedConv.id, userId: user?.id });
+              }}
+              onBlur={() => socket?.emit("comm:typing:stop", { conversationId: selectedConv.id, userId: user?.id })}
+              placeholder="Type a message..."
+              className="flex-1 h-12 px-4 rounded-xl border outline-none"
+              onKeyDown={e => e.key === "Enter" && sendMessage()}
+            />
             <button onClick={sendMessage} disabled={sending} className="h-12 px-6 bg-emerald-500 text-white rounded-xl font-bold disabled:opacity-50">Send</button>
+          </div>
+        </div>
+      )}
+
+      {/* Report modal */}
+      {showReportModal && selectedConv && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end justify-center">
+          <div className="bg-white rounded-t-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-extrabold text-gray-900 text-base flex items-center gap-2">
+                <Flag size={16} className="text-amber-500"/> Report {selectedConv.otherUser?.name || "User"}
+              </h3>
+              <button onClick={() => { setShowReportModal(false); setReportReason(""); }} className="w-8 h-8 bg-gray-100 rounded-xl flex items-center justify-center">
+                <X size={14} className="text-gray-500"/>
+              </button>
+            </div>
+            <textarea
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              placeholder="Describe the issue (e.g. harassment, spam, inappropriate content)..."
+              className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm mb-4 min-h-[100px] outline-none focus:border-amber-400 resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowReportModal(false); setReportReason(""); }}
+                className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-700 font-bold text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={handleReport}
+                disabled={!reportReason.trim()}
+                className="flex-1 py-3 rounded-2xl bg-amber-500 text-white font-bold text-sm disabled:opacity-50">
+                Submit Report
+              </button>
+            </div>
           </div>
         </div>
       )}
