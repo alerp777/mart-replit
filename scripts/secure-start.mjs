@@ -132,11 +132,11 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const apiPort    = process.env.PORT          || "5000";
-  const adminPort  = process.env.PORT_ADMIN    || "5173";
-  const vendorPort = process.env.PORT_VENDOR   || "5174";
-  const riderPort  = process.env.PORT_RIDER    || "5175";
-  const ajkPort    = process.env.PORT_AJK      || "19006";
+  const apiPort    = process.env.PORT               || "5000";
+  const adminPort  = process.env.ADMIN_DEV_PORT    || "23744";
+  const vendorPort = process.env.VENDOR_DEV_PORT   || "3002";
+  const riderPort  = process.env.RIDER_DEV_PORT    || "3001";
+  const ajkPort    = process.env.PORT_AJK           || "19006";
   const domain     = process.env.REPLIT_DEV_DOMAIN || "";
   const expoDomain = process.env.REPLIT_EXPO_DEV_DOMAIN || domain;
 
@@ -146,7 +146,8 @@ async function main() {
 
   installDeps();
   decryptEnv();
-  pushDb();
+  // DB schema is applied by the API server's own migration runner on startup.
+  // Skipping drizzle-kit push here to avoid interactive prompts.
 
   const services = [
     {
@@ -158,19 +159,19 @@ async function main() {
     {
       name:    "admin",
       args:    ["--filter", "@workspace/admin", "dev"],
-      env:     { PORT: adminPort, HOST: "0.0.0.0", BASE_PATH: "/admin/", VITE_API_PROXY_TARGET: apiProxy },
+      env:     { ADMIN_DEV_PORT: adminPort, HOST: "0.0.0.0", BASE_PATH: "/admin/", VITE_API_PROXY_TARGET: apiProxy },
       healthUrl: `http://127.0.0.1:${adminPort}/`,
     },
     {
       name:    "vendor",
       args:    ["--filter", "@workspace/vendor-app", "dev"],
-      env:     { PORT: vendorPort, HOST: "0.0.0.0", BASE_PATH: "/vendor/", VITE_API_PROXY_TARGET: apiProxy },
+      env:     { VENDOR_DEV_PORT: vendorPort, HOST: "0.0.0.0", BASE_PATH: "/vendor/", VITE_API_PROXY_TARGET: apiProxy },
       healthUrl: `http://127.0.0.1:${vendorPort}/`,
     },
     {
       name:    "rider",
       args:    ["--filter", "@workspace/rider-app", "dev"],
-      env:     { PORT: riderPort, HOST: "0.0.0.0", BASE_PATH: "/rider/", VITE_API_PROXY_TARGET: apiProxy },
+      env:     { RIDER_DEV_PORT: riderPort, HOST: "0.0.0.0", BASE_PATH: "/rider/", VITE_API_PROXY_TARGET: apiProxy },
       healthUrl: `http://127.0.0.1:${riderPort}/`,
     },
     {
