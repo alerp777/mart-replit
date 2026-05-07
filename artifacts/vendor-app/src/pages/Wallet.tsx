@@ -170,7 +170,7 @@ export default function Wallet() {
   const [toast, setToast] = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3500); };
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["vendor-wallet"],
     queryFn: () => api.getWallet(),
     refetchInterval: 30000,
@@ -322,6 +322,51 @@ export default function Wallet() {
             <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Earnings are settled every <strong>{settleDays} days</strong> after order completion. Min. withdrawal is <strong>{fc(minPayout, currencySymbol)}</strong>{maxPayout != null ? <> · Max. <strong>{fc(maxPayout, currencySymbol)}</strong> per request</> : " · No maximum limit set by admin"}.</p>
           </div>
         </div>
+        {/* ── Last Updated ── */}
+        {dataUpdatedAt > 0 && (
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs text-gray-400">
+              Last updated: <span className="font-semibold text-gray-500">{new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            </p>
+            <button onClick={() => refetch()} className="text-xs font-bold text-orange-500 hover:text-orange-600">↻ Refresh</button>
+          </div>
+        )}
+
+        {/* ── Payout Schedule ── */}
+        <div className="bg-green-50 border border-green-100 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">📅</span>
+            <p className="text-sm font-bold text-green-800">Payout Schedule</p>
+          </div>
+          <div className="space-y-1.5 text-xs text-green-700">
+            <div className="flex justify-between">
+              <span>Settlement cycle</span>
+              <span className="font-bold">Every {settleDays} day{settleDays !== 1 ? "s" : ""}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Min. withdrawal</span>
+              <span className="font-bold">{fc(minPayout, currencySymbol)}</span>
+            </div>
+            {maxPayout != null && (
+              <div className="flex justify-between">
+                <span>Max. per request</span>
+                <span className="font-bold">{fc(maxPayout, currencySymbol)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span>Processing time</span>
+              <span className="font-bold">{processingText}</span>
+            </div>
+          </div>
+          {(data?.commissionPct ?? commissionPct) > 0 && (
+            <div className="mt-3 pt-2.5 border-t border-green-200">
+              <p className="text-[11px] text-green-600 leading-relaxed">
+                💡 <strong>Tax note:</strong> Platform fees ({data?.commissionPct ?? commissionPct}%) are deducted from each order at settlement. Vendors are responsible for filing their own income tax returns as required by local law.
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* ── Withdrawal Info ── */}
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3">
           <span className="text-2xl flex-shrink-0">🔒</span>

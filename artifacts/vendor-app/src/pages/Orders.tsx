@@ -82,6 +82,10 @@ export default function Orders() {
   const [acceptDialog, setAcceptDialog] = useState<{ id: string; total: number } | null>(null);
   const [rejectDialog, setRejectDialog] = useState<{ id: string } | null>(null);
   const [assignModal, setAssignModal] = useState<{ orderId: string } | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<"newest"|"oldest"|"highest">("newest");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkConfirm, setBulkConfirm] = useState<"accept"|"reject"|null>(null);
   const socketRef = useRef<Socket | null>(null);
   const [riderPositions, setRiderPositions] = useState<Record<string, { lat: number; lng: number; updatedAt: string }>>({});
 
@@ -253,10 +257,48 @@ export default function Orders() {
 
   const apiStatus = tab === "new" ? "pending" : tab;
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["vendor-orders", tab], queryFn: () => api.getOrders(apiStatus), refetchInterval: 15000, retry: 2 });
-  const orders = data?.orders || [];
+  const rawOrders = data?.orders || [];
+
+  const orders = rawOrders
+    .filter((o: any) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      const idMatch = (o.id || "").toLowerCase().includes(q);
+      const nameMatch = (o.customerName || o.userName || "").toLowerCase().includes(q);
+      return idMatch || nameMatch;
+    })
+    .sort((a: any, b: any) => {
+      if (sortOrder === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (sortOrder === "highest") return Number(b.total) - Number(a.total);
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
   const countQ = useQuery({ queryKey: ["vendor-orders-count"], queryFn: () => api.getOrders("pending"), refetchInterval: 15000, enabled: tab !== "new" });
-  const newCount = tab === "new" ? orders.length : (countQ.data?.orders?.length || 0);
+  const newCount = tab === "new" ? rawOrders.length : (countQ.data?.orders?.length || 0);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkActionMut = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: string }) => {
+      for (const id of ids) {
+        await api.updateOrder(id, status);
+      }
+    },
+    onSuccess: (_, { status }) => {
+      setSelectedIds(new Set());
+      setBulkConfirm(null);
+      qc.invalidateQueries({ queryKey: ["vendor-orders"] });
+      qc.invalidateQueries({ queryKey: ["vendor-stats"] });
+      showToast(status === "confirmed" ? "✅ Orders accepted!" : "❌ Orders rejected!");
+    },
+    onError: (e: Error) => { setBulkConfirm(null); showToast("❌ " + errMsg(e)); },
+  });
 
   const updateMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => {
@@ -323,6 +365,48 @@ export default function Orders() {
       )}
       <PageHeader title={T("orders")} subtitle={`${orders.length} ${subtitleTab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
 
+      {/* ── Search + Sort ── */}
+      <div className="px-4 pt-3 pb-2 bg-white border-b border-gray-100 flex gap-2 md:px-0">
+        <input
+          type="search"
+          placeholder="Search by order ID or customer..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="flex-1 h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400"
+        />
+        <select
+          value={sortOrder}
+          onChange={e => setSortOrder(e.target.value as "newest"|"oldest"|"highest")}
+          className="h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400 font-medium text-gray-700"
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="highest">Highest value</option>
+        </select>
+      </div>
+
+      {/* ── Bulk Action Bar ── */}
+      {selectedIds.size > 0 && (
+        <div className="px-4 py-2 bg-orange-50 border-b border-orange-200 flex items-center gap-3 md:px-0">
+          <span className="text-xs font-bold text-orange-700 flex-1">{selectedIds.size} selected</span>
+          <button
+            onClick={() => setBulkConfirm("accept")}
+            className="h-8 px-4 bg-green-500 text-white text-xs font-bold rounded-xl"
+          >
+            ✓ Accept All
+          </button>
+          <button
+            onClick={() => setBulkConfirm("reject")}
+            className="h-8 px-4 bg-red-100 text-red-600 text-xs font-bold rounded-xl"
+          >
+            ✕ Reject All
+          </button>
+          <button onClick={() => setSelectedIds(new Set())} className="h-8 px-3 bg-gray-200 text-gray-600 text-xs font-bold rounded-xl">
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* ── Tabs ── */}
       <div className="bg-white border-b border-gray-200 flex sticky top-0 z-10 md:mx-0">
         {TAB_KEYS.map(tb => (
@@ -381,7 +465,7 @@ export default function Orders() {
               const cancelWindowExpired = msSincePlacedForCancel > 5 * 60 * 1000;
 
               return (
-                <div key={o.id} className={`${CARD}${o.status === "pending" ? " border-l-4 border-orange-400" : ""}`}>
+                <div key={o.id} className={`${CARD}${o.status === "pending" ? " border-l-4 border-orange-400" : ""}${selectedIds.has(o.id) ? " ring-2 ring-orange-400" : ""}`}>
                   {/* Auto-cancel countdown bar */}
                   {isPendingTimer && (
                     <div className="px-4 pt-3 pb-1">
@@ -424,9 +508,17 @@ export default function Orders() {
                     </div>
                   </button>
 
-                  {/* Quick Accept */}
+                  {/* Quick Accept + Checkbox for bulk */}
                   {!isExp && o.status === "pending" && (
-                    <div className="px-4 pb-3 flex gap-2">
+                    <div className="px-4 pb-3 flex gap-2 items-center">
+                      <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(o.id)}
+                          onChange={() => toggleSelect(o.id)}
+                          className="w-4 h-4 rounded accent-orange-500"
+                        />
+                      </label>
                       <button onClick={() => setAcceptDialog({ id: o.id, total: o.total })} disabled={isOrderPending}
                         className="flex-1 h-10 bg-green-500 text-white font-bold rounded-xl text-sm android-press disabled:opacity-60">✓ Accept</button>
                       <button onClick={() => setRejectDialog({ id: o.id })} disabled={isOrderPending}
@@ -538,6 +630,31 @@ export default function Orders() {
           </div>
         )}
       </div>
+
+      {/* Bulk Action Confirm Dialog */}
+      {bulkConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setBulkConfirm(null)}>
+          <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-extrabold text-gray-800 mb-1">
+              {bulkConfirm === "accept" ? `Accept ${selectedIds.size} Orders?` : `Reject ${selectedIds.size} Orders?`}
+            </h3>
+            <p className="text-sm text-gray-500 mb-5">
+              {bulkConfirm === "accept"
+                ? "This will confirm all selected pending orders and deduct stock."
+                : "This will cancel all selected pending orders. This cannot be undone."}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setBulkConfirm(null)} className="flex-1 h-11 border-2 border-gray-200 text-gray-600 font-bold rounded-xl text-sm">← Back</button>
+              <button
+                onClick={() => bulkActionMut.mutate({ ids: Array.from(selectedIds), status: bulkConfirm === "accept" ? "confirmed" : "cancelled" })}
+                disabled={bulkActionMut.isPending}
+                className={`flex-1 h-11 font-bold rounded-xl text-sm ${bulkConfirm === "accept" ? "bg-green-500 text-white" : "bg-red-500 text-white"}`}>
+                {bulkActionMut.isPending ? "Processing..." : bulkConfirm === "accept" ? "✓ Confirm Accept" : "✕ Confirm Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Accept order confirmation dialog */}
       {acceptDialog && (

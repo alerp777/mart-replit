@@ -11,7 +11,7 @@ import { ImageUploader } from "../components/ImageUploader";
 import { SafeImage } from "../components/ui/SafeImage";
 import { fc, fd, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
 
-const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart", videoUrl:"" };
+const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart", videoUrl:"", tags:"", isHidden: false };
 const EMPTY_ROW = { name:"", price:"", description:"", image:"", category:"", unit:"", stock:"", type:"mart" };
 const CATS_FALLBACK = ["food","grocery","bakery","pharmacy","electronics","clothing","mart","general"];
 const TYPES = ["mart","food","pharmacy","parcel"];
@@ -180,18 +180,26 @@ export default function Products() {
 
   const lowStock = products.filter(p => p.stock !== null && p.stock !== undefined && p.stock < lowStockThreshold && p.stock >= 0);
 
+  const hideMut = useMutation({
+    mutationFn: ({ id, isHidden }: { id: string; isHidden: boolean }) => api.updateProduct(id, { isHidden }),
+    onSuccess: (_, { isHidden }) => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); showToast(isHidden ? "👁️ Hidden from customers" : "✅ Visible to customers"); },
+    onError: (e: Error) => showToast("❌ " + errMsg(e)),
+  });
+
+  const tagsFromForm = (t: string): string[] => t.split(",").map(s => s.trim()).filter(Boolean);
+
   const createMut = useMutation({
     mutationFn: () => {
       if (totalProductCount === null) throw new Error("Cannot verify product count — please wait and try again.");
       if (totalProductCount >= maxItems) throw new Error(`Product limit of ${maxItems} reached. Delete existing products to add new ones.`);
-      return api.createProduct({ ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined, videoUrl: form.videoUrl || undefined });
+      return api.createProduct({ ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined, videoUrl: form.videoUrl || undefined, tags: tagsFromForm(form.tags), isHidden: form.isHidden });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setShowAdd(false); setForm({ ...EMPTY }); showToast("✅ Product added!"); },
     onError: (e: Error) => showToast("❌ " + errMsg(e)),
   });
 
   const updateMut = useMutation({
-    mutationFn: () => api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null }),
+    mutationFn: () => api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setEditProd(null); setShowAdd(false); showToast("✅ Updated!"); },
     onError: (e: Error) => showToast("❌ " + errMsg(e)),
   });
@@ -274,10 +282,10 @@ export default function Products() {
     onError: (e: Error) => showToast("❌ " + errMsg(e)),
   });
 
-  interface Product { id: string; name: string; description?: string | null; price: number; originalPrice?: number | null; category?: string | null; unit?: string | null; stock?: number | null; image?: string | null; videoUrl?: string | null; type?: string | null; inStock?: boolean }
+  interface Product { id: string; name: string; description?: string | null; price: number; originalPrice?: number | null; category?: string | null; unit?: string | null; stock?: number | null; image?: string | null; videoUrl?: string | null; type?: string | null; inStock?: boolean; tags?: string[] | null; isHidden?: boolean }
   const openEdit = (p: Product) => {
     setEditProd(p);
-    setForm({ name: p.name, description: p.description||"", price: String(p.price), originalPrice: p.originalPrice ? String(p.originalPrice) : "", category: p.category||"", unit: p.unit||"", stock: p.stock != null ? String(p.stock) : "", image: p.image||"", type: p.type||"mart", videoUrl: p.videoUrl||"" });
+    setForm({ name: p.name, description: p.description||"", price: String(p.price), originalPrice: p.originalPrice ? String(p.originalPrice) : "", category: p.category||"", unit: p.unit||"", stock: p.stock != null ? String(p.stock) : "", image: p.image||"", type: p.type||"mart", videoUrl: p.videoUrl||"", tags: Array.isArray(p.tags) ? p.tags.join(", ") : "", isHidden: !!p.isHidden });
     setShowAdd(true);
   };
   const closeForm = () => { setShowAdd(false); setEditProd(null); setForm({ ...EMPTY }); setFormErrors({}); };
@@ -317,8 +325,8 @@ export default function Products() {
                 <input type="number" inputMode="numeric" value={form.price} onChange={e => f("price",e.target.value)} placeholder="0" className={`${INPUT}${formErrors.price ? " !border-red-400 focus:!border-red-500" : ""}`}/>
                 {formErrors.price && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.price}</p>}
               </Field>
-              <Field label={T("originalPriceLabel")}>
-                <input type="number" inputMode="numeric" value={form.originalPrice} onChange={e => f("originalPrice",e.target.value)} placeholder="Strike-out" className={INPUT}/>
+              <Field label="Sale Price (crossed-out)">
+                <input type="number" inputMode="numeric" value={form.originalPrice} onChange={e => f("originalPrice",e.target.value)} placeholder="Original price" className={INPUT}/>
               </Field>
               <Field label={T("categoryLabel")}>
                 <select value={form.category} onChange={e => f("category",e.target.value)} className={`${SELECT}${formErrors.category ? " !border-red-400 focus:!border-red-500" : ""}`}>
@@ -347,6 +355,20 @@ export default function Products() {
             <Field label={T("descriptionLabel")}>
               <textarea value={form.description} onChange={e => f("description",e.target.value)} placeholder="Short description..." rows={2} className={TEXTAREA}/>
             </Field>
+            <Field label="Tags (comma-separated)">
+              <input value={form.tags} onChange={e => f("tags", e.target.value)} placeholder="e.g. spicy, bestseller, new" className={INPUT}/>
+              <p className="text-[10px] text-gray-400 mt-1">Tags help customers discover your product</p>
+            </Field>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <p className="text-sm font-bold text-gray-700">Hide from customers</p>
+                <p className="text-[11px] text-gray-400">Product won't appear in listings</p>
+              </div>
+              <button type="button" onClick={() => f("isHidden", !form.isHidden)}
+                className={`w-12 h-6 rounded-full relative transition-colors ${form.isHidden ? "bg-gray-400" : "bg-green-400"}`}>
+                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 shadow transition-all ${form.isHidden ? "left-1" : "left-7"}`}/>
+              </button>
+            </div>
           </div>
           <div className="space-y-4">
             <div className={`${CARD} p-4`}>
@@ -712,7 +734,7 @@ export default function Products() {
         ) : (
           <div className="md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 space-y-3 md:space-y-0">
             {products.map(p => (
-              <div key={p.id} className={`${CARD}${!p.inStock ? " opacity-60" : ""}`}>
+              <div key={p.id} className={`${CARD}${!p.inStock ? " opacity-60" : ""}${p.isHidden ? " border-2 border-dashed border-gray-300" : ""}`}>
                 <div className="p-4 flex items-start gap-3">
                   {p.image
                     ? <SafeImage src={p.image} alt={p.name} className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
@@ -721,7 +743,10 @@ export default function Products() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-gray-800 text-sm leading-snug">{p.name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-gray-800 text-sm leading-snug">{p.name}</p>
+                          {p.isHidden && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">Hidden</span>}
+                        </div>
                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                           {p.category && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-2 py-0.5 rounded-full capitalize">{p.category}</span>}
                           {p.unit && <span className="text-[10px] text-gray-400">/{p.unit}</span>}
@@ -741,6 +766,10 @@ export default function Products() {
                       <button onClick={() => toggleMut.mutate({ id: p.id, inStock: !p.inStock })}
                         className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 ${p.inStock ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                         {p.inStock ? "✓ In Stock" : "✗ Out"}
+                      </button>
+                      <button onClick={() => hideMut.mutate({ id: p.id, isHidden: !p.isHidden })} disabled={hideMut.isPending}
+                        className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 ${p.isHidden ? "bg-gray-100 text-gray-500" : "bg-indigo-50 text-indigo-600"}`}>
+                        {p.isHidden ? "👁️ Show" : "🙈 Hide"}
                       </button>
                       <button onClick={() => openEdit(p)} className="h-8 px-3 bg-blue-50 text-blue-600 text-xs font-bold rounded-xl android-press min-h-0">✏️ Edit</button>
                       <button onClick={() => {

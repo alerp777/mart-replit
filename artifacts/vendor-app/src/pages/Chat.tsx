@@ -33,6 +33,8 @@ export default function Chat() {
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const [conversationsError, setConversationsError] = useState(false);
   const [requestsError, setRequestsError]           = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const showError = (msg: string) => { setErrorToast(msg); setTimeout(() => setErrorToast(null), 4000); };
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -437,6 +439,50 @@ export default function Chat() {
       {selectedConv && (
         <div className="p-4 border-t bg-white">
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingFile}
+              title="Attach image or file"
+              className="h-12 w-12 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition flex-shrink-0 disabled:opacity-50"
+            >
+              {uploadingFile ? (
+                <span className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"/>
+              ) : (
+                <span className="text-xl">📎</span>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file || !selectedConv) return;
+                setUploadingFile(true);
+                try {
+                  const fd = new FormData();
+                  fd.append("file", file);
+                  const res = await apiFetch("/communication/upload", { method: "POST", body: fd });
+                  const url: string = res.url || res.fileUrl || "";
+                  const isImage = file.type.startsWith("image/");
+                  const msg: any = {
+                    conversationId: selectedConv.id,
+                    content: url,
+                    messageType: isImage ? "image" : "file",
+                  };
+                  await apiFetch("/communication/messages", { method: "POST", body: JSON.stringify(msg) });
+                  const msgs = await apiFetch(`/communication/conversations/${selectedConv.id}/messages`);
+                  setMessages(msgs.messages || []);
+                } catch (err) {
+                  showError(err instanceof Error ? err.message : "Upload failed");
+                } finally {
+                  setUploadingFile(false);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }
+              }}
+            />
             <input value={input} onChange={e => { setInput(e.target.value); socketRef.current?.emit("comm:typing:start", { conversationId: selectedConv.id, userId: user?.id }); }} onBlur={() => socketRef.current?.emit("comm:typing:stop", { conversationId: selectedConv.id, userId: user?.id })} placeholder="Type a message..." className="flex-1 h-12 px-4 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
             <button onClick={sendMessage} disabled={sending || !input.trim()} className="h-12 px-6 bg-orange-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">Send</button>
           </div>
