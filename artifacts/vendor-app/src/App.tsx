@@ -103,27 +103,64 @@ function AppRoutes() {
   useEffect(() => {
     if (!user) return;
     const pending = consumePendingNotificationTap();
-    if (pending && pending.orderId) {
+    if (pending?.orderId) {
+      navigate(`/orders/${pending.orderId}`);
+    } else if (pending) {
       navigate("/orders");
     }
   }, [user?.id]);
 
   /* ── FCM foreground notification banner ── */
-  const [fcmNotif, setFcmNotif] = useState<{ title: string; body: string } | null>(null);
+  const [fcmNotif, setFcmNotif] = useState<{ title: string; body: string; orderId?: string } | null>(null);
   const fcmCleanupRef = useRef<{ remove: () => void } | null>(null);
   const fcmDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user) return undefined;
-    const onForeground = (title: string, body: string) => {
-      setFcmNotif({ title, body });
+    const onForeground = (title: string, body: string, data?: Record<string, string>) => {
+      /* Play a short notification sound for new-order events */
+      const notifType = data?.type ?? "";
+      if (notifType === "new_order" || notifType === "order_status") {
+        try {
+          type AudioCtxCtor = typeof AudioContext;
+          const AudioCtxClass: AudioCtxCtor =
+            window.AudioContext ??
+            (window as Window & { webkitAudioContext?: AudioCtxCtor }).webkitAudioContext ??
+            null!;
+          if (!AudioCtxClass) return;
+          const ctx = new AudioCtxClass();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(880, ctx.currentTime);
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.4);
+        } catch {}
+      }
+      /* Banner copy for cancellation and settlement types */
+      let displayTitle = title;
+      let displayBody = body;
+      if (notifType === "order_cancelled") {
+        displayTitle = "❌ Order Cancelled";
+        displayBody = body || "An order has been cancelled.";
+      } else if (notifType === "payment_settlement") {
+        displayTitle = "💰 Payment Settled";
+        displayBody = body || "A payment has been settled to your wallet.";
+      }
+      setFcmNotif({ title: displayTitle, body: displayBody, orderId: data?.orderId });
       if (fcmDismissTimer.current) clearTimeout(fcmDismissTimer.current);
       fcmDismissTimer.current = setTimeout(() => setFcmNotif(null), 5000);
     };
     /* When the vendor taps a push notification (background state), navigate
-       to the Orders screen so they can review the new order immediately. */
+       to the specific order if orderId is provided. */
     const onNotificationTap = (data: Record<string, string>) => {
       if (data.orderId) {
+        navigate(`/orders/${data.orderId}`);
+      } else {
         navigate("/orders");
       }
     };
@@ -204,7 +241,12 @@ function AppRoutes() {
 
       {/* ── FCM foreground notification banner ── */}
       {fcmNotif && (
-        <button onClick={() => setFcmNotif(null)} className="fixed top-4 left-4 right-4 z-[10000] bg-orange-600 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl text-left">
+        <button
+          onClick={() => {
+            if (fcmNotif.orderId) navigate(`/orders/${fcmNotif.orderId}`);
+            setFcmNotif(null);
+          }}
+          className="fixed top-4 left-4 right-4 z-[10000] bg-orange-600 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl text-left">
           <div className="font-bold truncate">{fcmNotif.title}</div>
           <div className="text-xs opacity-90 truncate">{fcmNotif.body}</div>
         </button>
@@ -229,18 +271,19 @@ function AppRoutes() {
           >
             <div className="md:max-w-5xl md:mx-auto md:px-6 md:pb-8">
               <Switch>
-                <Route path="/" component={Dashboard} />
-                <Route path="/orders" component={Orders} />
-                <Route path="/products" component={Products} />
-                <Route path="/wallet" component={Wallet} />
-                <Route path="/analytics" component={Analytics} />
-                <Route path="/reviews" component={Reviews} />
-                <Route path="/promos" component={Promos} />
-                <Route path="/campaigns" component={Campaigns} />
-                <Route path="/chat" component={Chat} />
-                <Route path="/store" component={Store} />
-                <Route path="/notifications" component={Notifications} />
-                <Route path="/profile" component={Profile} />
+                <Route path="/"><ErrorBoundary><Dashboard /></ErrorBoundary></Route>
+                <Route path="/orders/:id">{(params) => <ErrorBoundary key={`order-${params.id}`}><Orders /></ErrorBoundary>}</Route>
+                <Route path="/orders"><ErrorBoundary><Orders /></ErrorBoundary></Route>
+                <Route path="/products"><ErrorBoundary><Products /></ErrorBoundary></Route>
+                <Route path="/wallet"><ErrorBoundary><Wallet /></ErrorBoundary></Route>
+                <Route path="/analytics"><ErrorBoundary><Analytics /></ErrorBoundary></Route>
+                <Route path="/reviews"><ErrorBoundary><Reviews /></ErrorBoundary></Route>
+                <Route path="/promos"><ErrorBoundary><Promos /></ErrorBoundary></Route>
+                <Route path="/campaigns"><ErrorBoundary><Campaigns /></ErrorBoundary></Route>
+                <Route path="/chat"><ErrorBoundary><Chat /></ErrorBoundary></Route>
+                <Route path="/store"><ErrorBoundary><Store /></ErrorBoundary></Route>
+                <Route path="/notifications"><ErrorBoundary><Notifications /></ErrorBoundary></Route>
+                <Route path="/profile"><ErrorBoundary><Profile /></ErrorBoundary></Route>
                 <Route>
                   <div className="flex items-center justify-center h-64">
                     <div className="text-center">

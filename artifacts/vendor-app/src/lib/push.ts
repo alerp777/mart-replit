@@ -60,7 +60,7 @@ if (Capacitor.isNativePlatform()) {
 }
 
 export async function registerPush(
-  onForegroundMessage?: (title: string, body: string) => void,
+  onForegroundMessage?: (title: string, body: string, data?: Record<string, string>) => void,
   onNotificationTap?: NotificationTapHandler,
 ): Promise<PushCleanup | void> {
   if (Capacitor.isNativePlatform()) {
@@ -76,7 +76,7 @@ function getAuthToken(): string {
 }
 
 async function registerFcmPush(
-  onForegroundMessage?: (title: string, body: string) => void,
+  onForegroundMessage?: (title: string, body: string, data?: Record<string, string>) => void,
   onNotificationTap?: NotificationTapHandler,
 ): Promise<PushCleanup | void> {
   try {
@@ -137,7 +137,8 @@ async function registerFcmPush(
 
     if (onForegroundMessage) {
       PushNotifications.addListener("pushNotificationReceived", (notification) => {
-        onForegroundMessage(notification.title ?? "", notification.body ?? "");
+        const data = (notification.data ?? {}) as Record<string, string>;
+        onForegroundMessage(notification.title ?? "", notification.body ?? "", data);
       }).then((h) => cleanups.push(h)).catch(() => {});
     }
 

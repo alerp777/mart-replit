@@ -275,6 +275,7 @@ export const api = {
   bulkAddProducts:(products: any[]) => apiFetch("/vendor/products/bulk", { method: "POST", body: JSON.stringify({ products }) }),
   updateProduct:  (id: string, data: any) => apiFetch(`/vendor/products/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteProduct:  (id: string) => apiFetch(`/vendor/products/${id}`, { method: "DELETE" }),
+  getProductStockHistory: (id: string) => apiFetch(`/vendor/products/${id}/stock-history`),
 
   /* Promos */
   getPromos:     () => apiFetch("/vendor/promos"),

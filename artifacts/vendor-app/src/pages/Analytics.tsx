@@ -108,13 +108,16 @@ export default function Analytics() {
     enabled: preset !== "custom" || Boolean(customReady),
   });
 
-  const summary     = data?.summary     || { totalOrders: 0, totalRevenue: 0 };
-  const dailyData   = (data?.daily as Array<{ date: string; orders: number; revenue: number }>) || [];
-  const topProducts = (data?.topProducts as Array<{ productId: string; name: string; orders: number; quantity?: number; revenue: number }>) || [];
-  const byStatus    = (data?.byStatus as Record<string, number>) || {};
-  const peakHours   = (data?.peakHours as Array<{ hour: number; orders: number; revenue: number }>) || [];
-  const returnRate  = (data?.returnRate as { totalCustomers: number; returningCustomers: number; rate: number }) || { totalCustomers: 0, returningCustomers: 0, rate: 0 };
-  const period      = (data?.period as { days: number; from: string; to: string }) || { days: preset === "custom" ? 0 : (preset as number), from: "", to: "" };
+  const summary         = data?.summary || { totalOrders: 0, totalRevenue: 0 };
+  const dailyData       = (data?.daily as Array<{ date: string; orders: number; revenue: number }>) || [];
+  const topProducts     = (data?.topProducts as Array<{ productId: string; name: string; orders: number; quantity?: number; revenue: number }>) || [];
+  const byStatus        = (data?.byStatus as Record<string, number>) || {};
+  const peakHours       = (data?.peakHours as Array<{ hour: number; orders: number; revenue: number }>) || [];
+  const returnRate      = (data?.returnRate as { totalCustomers: number; returningCustomers: number; rate: number }) || { totalCustomers: 0, returningCustomers: 0, rate: 0 };
+  const period          = (data?.period as { days: number; from: string; to: string }) || { days: preset === "custom" ? 0 : (preset as number), from: "", to: "" };
+  const customerRatings = (data?.customerRatings as { avgRating: number | null; count: number }) || { avgRating: null, count: 0 };
+  const cancellationRate = typeof data?.cancellationRate === "number" ? data.cancellationRate : null;
+  const responseTime    = typeof data?.responseTime === "number" ? data.responseTime : null;
 
   const totalOrders   = Number(summary.totalOrders   || 0);
   const totalRevenue  = Number(summary.totalRevenue  || 0);
@@ -182,15 +185,18 @@ export default function Analytics() {
         )}
 
         {/* ── KPI Cards ── */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: T("revenue"),    value: fc(totalRevenue, currencySymbol),  icon: "💰", sub: rangeLabel,         bg: "bg-orange-50",  val: "text-orange-600"  },
             { label: T("orders"),     value: String(totalOrders),               icon: "📦", sub: rangeLabel,         bg: "bg-blue-50",    val: "text-blue-600"    },
             { label: T("avgOrder"),   value: fc(avgOrderValue, currencySymbol), icon: "📊", sub: T("avgOrder"),      bg: "bg-purple-50",  val: "text-purple-600"  },
             { label: T("completion"), value: `${completionRate}%`,              icon: "✅", sub: T("delivered"),     bg: "bg-green-50",   val: "text-green-600"   },
             { label: "Return Rate",   value: `${returnRate.rate}%`,             icon: "🔁", sub: `${returnRate.returningCustomers}/${returnRate.totalCustomers} customers`, bg: "bg-pink-50", val: "text-pink-600" },
+            { label: "Avg Rating",    value: customerRatings.avgRating != null ? `${customerRatings.avgRating} ★` : "—", icon: "⭐", sub: `${customerRatings.count} review${customerRatings.count !== 1 ? "s" : ""}`, bg: "bg-yellow-50", val: "text-yellow-600" },
+            { label: "Cancel Rate",   value: cancellationRate != null ? `${cancellationRate}%` : "—", icon: "❌", sub: "of all orders", bg: "bg-red-50", val: "text-red-500" },
+            { label: "Avg Response",  value: responseTime != null ? (responseTime < 1 ? `${Math.round(responseTime * 60)}s` : `${responseTime} min`) : "—", icon: "⚡", sub: "median to confirm", bg: "bg-indigo-50", val: "text-indigo-600" },
           ].map(k => (
-            <div key={k.label} className={`${k.bg} rounded-2xl p-4 col-span-1 md:col-span-1`}>
+            <div key={k.label} className={`${k.bg} rounded-2xl p-4 col-span-1`}>
               <p className="text-2xl">{k.icon}</p>
               {loading ? (
                 <div className="h-6 w-24 skeleton rounded-lg mt-2"/>
