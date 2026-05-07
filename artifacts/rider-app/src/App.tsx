@@ -16,7 +16,7 @@ import { initSentry, setSentryUser } from "./lib/sentry";
 import { initAnalytics, trackEvent, identifyUser } from "./lib/analytics";
 import { initErrorReporter } from "./lib/error-reporter";
 import { api, apiFetch, setApiTimeoutMs } from "./lib/api";
-import { setGeofencePolygon } from "./lib/gps/validation";
+import { setGeofencePolygon, setMaxSpeedKmh } from "./lib/gps/validation";
 import { riderEnv } from "./lib/envValidation";
 import { BottomNav } from "./components/BottomNav";
 import { AnnouncementBar } from "./components/AnnouncementBar";
@@ -42,6 +42,7 @@ const Notifications   = lazy(() => import("./pages/Notifications"));
 const SecuritySettings = lazy(() => import("./pages/SecuritySettings"));
 const VanDriver       = lazy(() => import("./pages/VanDriver"));
 const Chat            = lazy(() => import("./pages/Chat"));
+const Reviews         = lazy(() => import("./pages/Reviews"));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, networkMode: 'offlineFirst' } } });
 
@@ -65,8 +66,11 @@ const SPLASH_DEADLINE_MS = 30_000;
 /* P4: Track once-per-tab whether we've already requested notification
    permission so we don't re-prompt on every `user` change. The browser will
    silently no-op after a "denied" decision, but the call still emits a console
-   warning that the error reporter would otherwise capture (PF1). */
-let _notifPermissionAsked = false;
+   warning that the error reporter would otherwise capture (PF1).
+   We persist this flag in sessionStorage (rather than a module-level let) so
+   that HMR reloads in dev and React StrictMode double-invocations don't
+   accidentally re-prompt within the same browser tab session. */
+const NOTIF_ASKED_KEY = "_ajkm_notifPermissionAsked";
 
 function PageFallback() {
   return (
@@ -137,7 +141,7 @@ function AppRoutes() {
     if (typeof net.riderDismissedRequestTtlSec === "number") setDismissedRequestTtlSec(net.riderDismissedRequestTtlSec);
   }, [config]);
 
-  /* ── Wire platform-config geofence into GPS validation module ── */
+  /* ── Wire platform-config geofence + speed threshold into GPS validation ── */
   useEffect(() => {
     const poly = config?.geofence?.polygon;
     if (Array.isArray(poly) && poly.length >= 3) {
@@ -145,7 +149,9 @@ function AppRoutes() {
     } else {
       setGeofencePolygon(null);
     }
-  }, [config?.geofence]);
+    const maxSpeed = config?.security?.gpsMaxSpeedKmh;
+    if (typeof maxSpeed === "number") setMaxSpeedKmh(maxSpeed);
+  }, [config?.geofence, config?.security?.gpsMaxSpeedKmh]);
 
   /* ── Sentry + Analytics init from platform config ── */
   useEffect(() => {
@@ -233,12 +239,12 @@ function AppRoutes() {
       };
     }
     if (typeof Notification === "undefined" || !Notification.requestPermission) return undefined;
-    if (_notifPermissionAsked) return undefined;
+    if (sessionStorage.getItem(NOTIF_ASKED_KEY)) return undefined;
     if (Notification.permission !== "default") {
       if (Notification.permission === "granted") registerPush().catch(() => {});
       return undefined;
     }
-    _notifPermissionAsked = true;
+    sessionStorage.setItem(NOTIF_ASKED_KEY, "1");
     Notification.requestPermission().then(perm => {
       if (perm === "granted") registerPush().catch(() => {});
     }).catch(() => {});
@@ -468,6 +474,7 @@ function AppRoutes() {
             <Route path="/van-driver" component={VanDriver} />
             <Route path="/chat" component={Chat} />
             <Route path="/chat/:id" component={Chat} />
+            <Route path="/reviews" component={Reviews} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>

@@ -19,10 +19,18 @@ interface AuditEntry {
   lng: number;
 }
 
-const MAX_SPEED_KMH = 200;
+let _maxSpeedKmh = 200;
 const MIN_ACCURACY_M = 2;
 const MAX_FUTURE_SECONDS = 5;
 const MAX_AUDIT_ENTRIES = 100;
+
+/**
+ * Override the GPS impossible-speed threshold from platform config.
+ * Falls back to 200 km/h when platform config has not yet loaded.
+ */
+export function setMaxSpeedKmh(value: number): void {
+  if (Number.isFinite(value) && value > 0) _maxSpeedKmh = value;
+}
 
 const _auditLog: AuditEntry[] = [];
 
@@ -94,7 +102,7 @@ export function validateGpsPing(prev: GpsPing | null, next: GpsPing): GpsValidat
         next.latitude, next.longitude,
       );
       const speedKmh = (distM / deltaMs) * 3_600;
-      if (speedKmh > MAX_SPEED_KMH) {
+      if (speedKmh > _maxSpeedKmh) {
         const reason = `impossible speed (${Math.round(speedKmh)} km/h)`;
         recordRejection(reason, next.latitude, next.longitude);
         return { valid: false, reason };

@@ -411,7 +411,7 @@ export default function Profile() {
     { href: "/wallet",        icon: <Wallet size={20}/>,       label: T("wallet"),            bg: "bg-emerald-50 text-emerald-600" },
     { href: "/earnings",      icon: <BarChart2 size={20}/>,    label: T("yourEarnings"),      bg: "bg-amber-50 text-amber-600"     },
     { href: "/history",       icon: <ClipboardList size={20}/>,label: T("myOrders"),          bg: "bg-purple-50 text-purple-600"   },
-    { href: "/",              icon: <Home size={20}/>,         label: T("dashboard"),         bg: "bg-blue-50 text-blue-600"       },
+    { href: "/reviews",       icon: <Star size={20}/>,         label: "My Reviews",           bg: "bg-yellow-50 text-yellow-600"   },
     { href: "/notifications", icon: <Bell size={20}/>,         label: T("notifications"),     bg: "bg-indigo-50 text-indigo-600",  badge: unread },
     { href: "/settings/security", icon: <Shield size={20}/>,   label: T("securitySettingsLink"), bg: "bg-red-50 text-red-600"     },
   ];

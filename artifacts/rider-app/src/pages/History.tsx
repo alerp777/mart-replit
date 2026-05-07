@@ -20,7 +20,7 @@ type FilterKind   = "all" | "order" | "ride";
 type HistoryItem = {
   id: string; kind: "order" | "ride"; type: string;
   status: string; earnings: number; amount: number;
-  address?: string; createdAt: string;
+  address?: string; createdAt: string; proofPhoto?: string;
 };
 
 const PAGE_SIZE = 50;
@@ -267,6 +267,19 @@ export default function History() {
                             <span className={`text-xs font-extrabold ${completed ? "text-green-600" : "text-gray-400"}`}>
                               {completed ? `+${formatCurrency(item.earnings || 0)}` : "—"}
                             </span>
+                          </div>
+                        )}
+                        {item.proofPhoto && (
+                          <div className="flex items-start gap-2 pt-1">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 w-16 flex-shrink-0">Proof</span>
+                            <a href={item.proofPhoto} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:opacity-90 transition-opacity">
+                              <img
+                                src={item.proofPhoto}
+                                alt="Delivery proof"
+                                className="w-32 h-24 object-cover"
+                                loading="lazy"
+                              />
+                            </a>
                           </div>
                         )}
                       </div>
