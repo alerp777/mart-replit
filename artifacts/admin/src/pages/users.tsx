@@ -20,6 +20,7 @@ import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
+import { SafeImage } from "@/components/ui/SafeImage";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -1432,7 +1433,7 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
                 <div key={`${doc.label}-${i}`} className="space-y-1 group">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{doc.label}</p>
                   <a href={doc.url} target="_blank" rel="noopener noreferrer" className="block relative rounded-xl overflow-hidden border border-border/50">
-                    <img src={doc.url} alt={doc.label} className="w-full h-32 object-cover group-hover:opacity-80 transition-opacity" />
+                    <SafeImage src={doc.url} alt={doc.label} className="w-full h-32 object-cover group-hover:opacity-80 transition-opacity" />
                     <span className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-medium">
                       Click to zoom
                     </span>
