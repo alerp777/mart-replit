@@ -27,6 +27,7 @@ export interface ProductQueueError {
 
 const QUEUE_KEY = "ajkmart_vendor_offline_queue";
 const PRODUCT_QUEUE_KEY = "ajkmart_vendor_product_queue";
+const PRODUCT_FAILURES_KEY = "ajkmart_vendor_product_failures";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 800;
 
@@ -60,6 +61,21 @@ function saveProductQueue(q: QueuedProductAction[]): void {
   } catch {}
 }
 
+function loadProductFailures(): ProductQueueError[] {
+  try {
+    const raw = localStorage.getItem(PRODUCT_FAILURES_KEY);
+    return raw ? (JSON.parse(raw) as ProductQueueError[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveProductFailures(f: ProductQueueError[]): void {
+  try {
+    localStorage.setItem(PRODUCT_FAILURES_KEY, JSON.stringify(f));
+  } catch {}
+}
+
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -69,7 +85,7 @@ export function useOfflineQueue() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState("");
   const [pendingProductCount, setPendingProductCount] = useState<number>(() => loadProductQueue().length);
-  const [productQueueErrors, setProductQueueErrors] = useState<ProductQueueError[]>([]);
+  const [productQueueErrors, setProductQueueErrors] = useState<ProductQueueError[]>(() => loadProductFailures());
   const qc = useQueryClient();
   const flushingRef = useRef(false);
   const flushingProductsRef = useRef(false);
@@ -111,8 +127,9 @@ export function useOfflineQueue() {
     const queue = loadProductQueue();
     if (queue.length === 0) return;
     flushingProductsRef.current = true;
-    const errors: ProductQueueError[] = [];
-    const remaining: QueuedProductAction[] = [];
+
+    const stillPending: QueuedProductAction[] = [];
+    const newFailures: ProductQueueError[] = [];
 
     for (const item of queue) {
       let success = false;
@@ -136,22 +153,30 @@ export function useOfflineQueue() {
       }
 
       if (!success) {
-        errors.push({
+        newFailures.push({
           id: item.id,
           action: item.action,
           productId: item.productId,
-          message: lastError,
+          message: lastError || "Failed after maximum retries",
         });
-        remaining.push({ ...item, retries: attempts });
       }
     }
 
-    saveProductQueue(remaining);
-    setPendingProductCount(remaining.length);
-    setProductQueueErrors(errors);
+    saveProductQueue(stillPending);
+    setPendingProductCount(0);
+
+    const existingFailures = loadProductFailures();
+    const existingIds = new Set(existingFailures.map(f => f.id));
+    const mergedFailures = [
+      ...existingFailures,
+      ...newFailures.filter(f => !existingIds.has(f.id)),
+    ];
+    saveProductFailures(mergedFailures);
+    setProductQueueErrors(mergedFailures);
+
     flushingProductsRef.current = false;
 
-    if (remaining.length === 0 && queue.length > 0) {
+    if (newFailures.length === 0 && queue.length > 0) {
       await qc.invalidateQueries({ queryKey: ["vendor-products"] });
       await qc.invalidateQueries({ queryKey: ["vendor-products-all"] });
     }
