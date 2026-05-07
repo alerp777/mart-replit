@@ -12,3 +12,9 @@ id = "jadjF245UeNgAA3uR9QAl"
 uri = "file://ajkmart.md"
 type = "text"
 title = "AJKMart Super-App — Complete 360° Documentation Book"
+
+[[outputs]]
+id = "WNwtNZYSv_jzPei9DwlSo"
+uri = "file://ajkmart-customer-app.md"
+type = "text"
+title = "AJKMart Customer App — Complete Screen-by-Screen Documentation"
