@@ -45,6 +45,7 @@ import communicationRouter from "./communication.js";
 import weatherConfigRouter from "./weather-config.js";
 import deepLinksPublicRouter from "./deep-links-public.js";
 import legalRouter from "./legal.js";
+import docsRouter from "./docs.js";
 import { adminAuth } from "./admin-shared.js";
 import { userApiLimiter } from "../middleware/rate-limit.js";
 
@@ -126,5 +127,7 @@ router.use("/dl", deepLinksPublicRouter);
  */
 router.use("/legal", adminAuth, legalRouter);
 router.use("/admin/legal", adminAuth, legalRouter);
+
+router.use("/docs", docsRouter);
 
 export default router;

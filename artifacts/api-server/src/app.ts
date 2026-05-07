@@ -278,6 +278,9 @@ export function createServer() {
   }
 
   // Security headers via helmet
+  // Swagger UI (/api/docs) requires 'unsafe-inline' scripts and styles plus
+  // worker-src blob: for its web worker. These are already present in scriptSrc
+  // and styleSrc. The blob: worker is added to workerSrc.
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
@@ -287,6 +290,7 @@ export function createServer() {
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "data:"],
         connectSrc: ["'self'"],
+        workerSrc: ["'self'", "blob:"],
       },
     },
     hsts: {

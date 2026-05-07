@@ -552,6 +552,46 @@ export function SystemSection() {
       {/* ═══ CSV / Report Export ═══ */}
       <CSVExportSection toast={toast} />
 
+      {/* ═══ Developer Tools ═══ */}
+      <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <BookCopy size={16} className="text-indigo-600" />
+          <p className="font-bold text-base text-slate-800">Developer Tools</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <a
+            href="/api/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-start gap-3 p-4 rounded-xl border border-indigo-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 transition-all"
+          >
+            <div className="w-10 h-10 rounded-lg bg-indigo-100 group-hover:bg-indigo-200 flex items-center justify-center transition-all shrink-0">
+              <Wrench size={18} className="text-indigo-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-slate-800 flex items-center gap-1">
+                API Docs
+                <svg className="w-3 h-3 text-slate-400 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                Interactive Swagger UI — browse all API endpoints, view request/response schemas, and run test calls.
+              </p>
+            </div>
+          </a>
+          <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-200 bg-white">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+              <BookCopy size={18} className="text-slate-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-slate-800">Operational Runbooks</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                Deployment, rollback, incident response, and on-call guides are in <code className="bg-slate-100 px-1 rounded text-slate-600">docs/runbooks/</code> in the repository.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-white p-5">
         <div className="flex items-center gap-2 mb-4">
           <Database size={16} className="text-slate-600" />
