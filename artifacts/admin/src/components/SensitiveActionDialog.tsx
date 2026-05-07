@@ -3,7 +3,7 @@ import { Lock, AlertTriangle, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchAdmin } from "@/lib/adminFetcher";
+import { fetchAdmin, AdminFetchError } from "@/lib/adminFetcher";
 
 export interface SensitiveActionDialogProps {
   open: boolean;
@@ -78,11 +78,13 @@ export function SensitiveActionDialog({
       // Verification succeeded — proceed with the original action
       await onConfirm();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const status = err instanceof AdminFetchError ? err.status : undefined;
+      const message = err instanceof Error ? err.message : undefined;
       const msg =
-        err?.status === 401 || err?.status === 403
+        status === 401 || status === 403
           ? "Incorrect password. Please try again."
-          : err?.message || "Verification failed. Please try again.";
+          : message ?? "Verification failed. Please try again.";
       setError(msg);
     } finally {
       setVerifying(false);

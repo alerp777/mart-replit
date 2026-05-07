@@ -1,6 +1,8 @@
+import React from 'react';
 import { readCsrfFromCookie } from './adminAuthContext.js';
 import { safeSessionSet } from './safeStorage';
 import { toast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 
 /**
  * Typed Error for non-2xx admin fetcher responses. Replaces the previous
@@ -61,13 +63,20 @@ function timeoutSignal(ms: number, externalSignal?: AbortSignal): AbortSignal {
  * show a toast so the user knows the request hung.
  * External aborts (e.g. component unmount via AbortController) are silently
  * swallowed — they are not user-facing errors.
+ *
+ * @param err   - The caught error (only fires when it is a TimeoutError)
+ * @param retry - Optional callback wired to the toast "Retry" action so
+ *                the user can re-send the request without a page reload.
  */
-function handleTimeoutError(err: unknown): void {
+function handleTimeoutError(err: unknown, retry?: () => void): void {
   if (!(err instanceof TimeoutError)) return;
   toast({
     title: 'Request timed out',
     description: 'The server took too long to respond. Check your connection and try again.',
     variant: 'destructive',
+    action: retry
+      ? <ToastAction altText="Retry" onClick={retry}>Retry</ToastAction>
+      : undefined,
   });
 }
 
@@ -146,11 +155,12 @@ export async function fetchAdmin(
       // Only show toast for our own timeout — not for external aborts
       // (e.g. component unmount). The AbortController abort reason is set to
       // a TimeoutError instance, so we can distinguish them cleanly.
+      const retryFn = () => { fetchAdmin(endpoint, options).catch(() => {}); };
       if (err instanceof TimeoutError) {
-        handleTimeoutError(err);
+        handleTimeoutError(err, retryFn);
       } else if (err instanceof DOMException && err.name === 'AbortError') {
         const reason = (signal as AbortSignal & { reason?: unknown }).reason;
-        if (reason instanceof TimeoutError) handleTimeoutError(reason);
+        if (reason instanceof TimeoutError) handleTimeoutError(reason, retryFn);
       }
       throw err;
     }
@@ -245,7 +255,7 @@ export async function fetchAdminAbsolute(
       credentials: 'include',
     });
   } catch (err) {
-    handleTimeoutError(err);
+    handleTimeoutError(err, () => { fetchAdminAbsolute(path, options).catch(() => {}); });
     throw err;
   }
 
@@ -312,7 +322,7 @@ export async function fetchAdminAbsoluteResponse(
     const signal = timeoutSignal(FETCH_TIMEOUT_MS, options.signal as AbortSignal | undefined);
     response = await fetch(path, { ...options, signal, headers: baseHeaders, credentials: 'include' });
   } catch (err) {
-    handleTimeoutError(err);
+    handleTimeoutError(err, () => { fetchAdminAbsoluteResponse(path, options).catch(() => {}); });
     throw err;
   }
 
