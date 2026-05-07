@@ -745,18 +745,6 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
 }
 
 /* ══════════════════════════════════════════════════════════════
-   SECURITY HEADERS MIDDLEWARE
-══════════════════════════════════════════════════════════════ */
-export function securityHeadersMiddleware(_req: Request, res: Response, next: NextFunction) {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
-  next();
-}
-
-/* ══════════════════════════════════════════════════════════════
    ADMIN IP WHITELIST CHECK
 ══════════════════════════════════════════════════════════════ */
 export function checkAdminIPWhitelist(req: Request, settings: Record<string, string>): boolean {

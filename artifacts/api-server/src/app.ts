@@ -246,7 +246,7 @@ export function createServer() {
       preload: true,
     },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-    frameguard: { action: 'sameorigin' },
+    frameguard: { action: 'deny' },
     noSniff: true,
     xssFilter: true,
   }));
@@ -259,6 +259,7 @@ export function createServer() {
       "Permissions-Policy",
       "camera=(), microphone=(), geolocation=(), payment=(), fullscreen=(self)"
     );
+    res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
     next();
   });
   
@@ -272,7 +273,11 @@ export function createServer() {
         return callback(null, true);
       }
       // In production, restrict to configured origins
-      const allowed = (process.env.FRONTEND_URL || process.env.CLIENT_URL || '').split(',').filter(Boolean);
+      const allowed = [
+        ...(process.env.FRONTEND_URL || '').split(','),
+        ...(process.env.CLIENT_URL || '').split(','),
+        ...(process.env.ADMIN_BASE_URL || '').split(','),
+      ].filter(Boolean);
       if (allowed.length === 0 || allowed.some(o => origin.startsWith(o))) {
         return callback(null, true);
       }
