@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "../../lib/auth";
 import { api, apiFetch } from "../../lib/api";
+import { riderIsDev } from "../../lib/envValidation";
 import { usePlatformConfig } from "../../lib/useConfig";
 import { useLanguage } from "../../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -80,7 +81,7 @@ export default function WithdrawModal({
         setMethods(enabled);
       }
     }).catch((err: Error) => {
-      if (import.meta.env.DEV) console.warn("[WithdrawModal] Failed to load payment methods:", err.message);
+      if (riderIsDev) console.warn("[WithdrawModal] Failed to load payment methods:", err.message);
       setMethodsError(true);
     }).finally(() => setLoadingMethods(false));
   }, []);

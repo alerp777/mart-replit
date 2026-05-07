@@ -21,7 +21,8 @@ import { useVersionCheck } from "@/hooks/useVersionCheck";
 
 // Run env audit once at module load so warnings appear before any
 // component depends on `import.meta.env.BASE_URL` etc.
-auditAdminEnv();
+// The typed result is consumed below in place of raw import.meta.env access.
+const _adminEnv = auditAdminEnv();
 // Apply persisted font-scale + contrast on boot so the very first paint
 // already honours the admin's accessibility preferences.
 bootAccessibilitySettings();
@@ -429,7 +430,7 @@ function App() {
       <AdminAuthProvider>
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <WouterRouter base={_adminEnv.baseUrl.replace(/\/$/, "")}>
               <VersionCheckInit />
               <LanguageInit />
               <IntegrationsInit />

@@ -1,14 +1,12 @@
+import { getVendorApiBase } from "./envValidation";
+
 const SOURCE_APP = "vendor";
 let _initialized = false;
 let _queue: Array<Record<string, unknown>> = [];
 let _flushing = false;
 
 function getApiBase(): string {
-  const env = import.meta.env;
-  const capacitorBase = env.VITE_CAPACITOR === "true" && env.VITE_API_BASE_URL;
-  return capacitorBase
-    ? `${String(capacitorBase).replace(/\/+$/, "")}/api`
-    : `${(env.BASE_URL || "/").replace(/\/$/, "")}/api`;
+  return getVendorApiBase();
 }
 
 async function sendReport(report: Record<string, unknown>): Promise<void> {

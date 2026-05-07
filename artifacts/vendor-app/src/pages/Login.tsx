@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { Phone, Mail, User, Wrench, AlertCircle, X, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { api, apiFetch } from "../lib/api";
+import { vendorEnv } from "../lib/envValidation";
 import { usePlatformConfig, getVendorAuthConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -177,7 +178,7 @@ export default function Login() {
     setError(msg);
   };
 
-  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  const BASE = vendorEnv.baseUrl.replace(/\/$/, "");
 
   const handleSocialGoogle = async () => {
     if (!googleClientId) { setError("Google login is not configured. Please contact support."); return; }

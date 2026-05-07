@@ -11,6 +11,7 @@ import { initSentry, setSentryUser } from "./lib/sentry";
 import { initAnalytics, trackEvent, identifyUser } from "./lib/analytics";
 import { initErrorReporter } from "./lib/error-reporter";
 import { setApiTimeoutMs } from "./lib/api";
+import { vendorEnv } from "./lib/envValidation";
 import { BottomNav } from "./components/BottomNav";
 import { PwaInstallBanner } from "./components/PwaInstallBanner";
 import { SideNav } from "./components/SideNav";
@@ -290,7 +291,7 @@ export default function App() {
                  The previous logic forced "/vendor" whenever BASE_URL was
                  "/", which broke standalone deployments by mounting every
                  route under a non-existent /vendor prefix. */
-              const raw = import.meta.env.BASE_URL;
+              const raw = vendorEnv.baseUrl;
               if (typeof raw !== "string" || raw.length === 0) return "";
               return raw.replace(/\/$/, "");
             })()}>

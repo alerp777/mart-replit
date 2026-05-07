@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { reportError } from "../lib/error-reporter";
+import { vendorIsDev } from "../lib/envValidation";
 
 type FallbackFn = (reset: () => void, error: Error | null) => ReactNode;
 
@@ -18,7 +19,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
-    if (import.meta.env.DEV) console.error("[ErrorBoundary]", error, info);
+    if (vendorIsDev) console.error("[ErrorBoundary]", error, info);
     reportError({
       errorType: "frontend_crash",
       errorMessage: error.message || "Component crash",

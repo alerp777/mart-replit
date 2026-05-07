@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
+import { vendorEnv } from "../lib/envValidation";
 import { usePlatformConfig, useCurrency } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -23,7 +24,7 @@ patchLeafletDefaultIcon();
 function useVendorTileConfig() {
   const [tile, setTile] = useState({ url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', provider: "osm" });
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}api/maps/config?app=vendor`)
+    fetch(`${vendorEnv.baseUrl}api/maps/config?app=vendor`)
       .then(r => r.json())
       .then((d: any) => {
         const cfg = d?.data ?? d;

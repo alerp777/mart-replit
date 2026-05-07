@@ -4,13 +4,10 @@ import App from "./App";
 import "./index.css";
 import { initErrorReporter } from "./lib/error-reporter";
 import { checkApiHealth } from "./lib/checkApiHealth";
+import { auditVendorEnv } from "./lib/envValidation";
 
-if (import.meta.env.DEV) {
-  const apiTarget = import.meta.env.VITE_API_PROXY_TARGET || import.meta.env.VITE_API_BASE_URL;
-  if (!apiTarget) {
-    console.warn("[AJKMart Vendor] VITE_API_PROXY_TARGET is not set — API proxy may point to wrong host. Fix: add VITE_API_PROXY_TARGET as a Replit Secret or in your .env file, then restart.");
-  }
-}
+// Run env audit once at module load — warnings appear in dev only.
+auditVendorEnv();
 
 initErrorReporter();
 

@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { reportError } from "../lib/error-reporter";
+import { riderIsDev } from "../lib/envValidation";
 
 interface Props { children: ReactNode; fallback?: ReactNode; }
 interface State { hasError: boolean; error: Error | null; }
@@ -15,7 +16,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
-    if (import.meta.env.DEV) console.error("[ErrorBoundary]", error, info);
+    if (riderIsDev) console.error("[ErrorBoundary]", error, info);
     reportError({
       errorType: "frontend_crash",
       errorMessage: error.message || "Component crash",

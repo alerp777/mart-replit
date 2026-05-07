@@ -5,6 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Maximize2, X, Navigation } from "lucide-react";
 import { buildMapsDeepLink } from "./helpers";
+import { riderEnv } from "../../lib/envValidation";
 
 interface MapsConfigPublic {
   provider: string;
@@ -52,7 +53,7 @@ function useMiniMapTileConfig(): { tileUrl: string; attribution: string } {
   const { data } = useQuery<MapsConfigPublic>({
     queryKey: ["maps-config-public"],
     queryFn: async (): Promise<MapsConfigPublic> => {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/maps/config?app=rider`);
+      const res = await fetch(`${riderEnv.baseUrl}api/maps/config?app=rider`);
       const json = (await res.json()) as { data?: MapsConfigPublic } & MapsConfigPublic;
       return (json.data ?? json) as MapsConfigPublic;
     },

@@ -18,6 +18,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { api, getApiBase } from "./api";
+import { riderEnv, riderIsDev } from "./envValidation";
 
 /** Listener cleanup handle returned to callers for foreground messages. */
 export interface PushCleanup {
@@ -74,7 +75,7 @@ async function registerFcmPush(
 
     const permResult = await PushNotifications.requestPermissions();
     if (permResult.receive !== "granted") {
-      if (import.meta.env.DEV) console.warn("[push] FCM permission denied");
+      if (riderIsDev) console.warn("[push] FCM permission denied");
       return;
     }
 
@@ -94,7 +95,7 @@ async function registerFcmPush(
         body: JSON.stringify({ type: "fcm", token, role: "rider" }),
       });
       if (!res.ok) {
-        if (import.meta.env.DEV) console.warn("[push] FCM token registration failed:", res.status, res.statusText);
+        if (riderIsDev) console.warn("[push] FCM token registration failed:", res.status, res.statusText);
       }
     };
 
@@ -157,7 +158,7 @@ async function registerFcmPush(
 
     return { remove: () => cleanups.forEach((h) => h.remove()) };
   } catch (e) {
-    if (import.meta.env.DEV) console.warn("[push] FCM registration failed:", e);
+    if (riderIsDev) console.warn("[push] FCM registration failed:", e);
   }
 }
 
@@ -166,7 +167,7 @@ async function registerFcmPush(
 async function registerVapidPush(): Promise<void> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   try {
-    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    const base = (riderEnv.baseUrl || "/").replace(/\/$/, "");
     const reg = await navigator.serviceWorker.register(`${base}/sw.js`, { scope: base + "/" });
     const existing = await reg.pushManager.getSubscription();
     if (existing) return;
@@ -198,7 +199,7 @@ async function registerVapidPush(): Promise<void> {
       }),
     });
   } catch (e) {
-    if (import.meta.env.DEV) console.warn("[push] VAPID registration failed:", e);
+    if (riderIsDev) console.warn("[push] VAPID registration failed:", e);
   }
 }
 

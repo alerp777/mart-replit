@@ -15,6 +15,7 @@ import { initSentry, setSentryUser } from "./lib/sentry";
 import { initAnalytics, trackEvent, identifyUser } from "./lib/analytics";
 import { initErrorReporter } from "./lib/error-reporter";
 import { api, setApiTimeoutMs } from "./lib/api";
+import { riderEnv } from "./lib/envValidation";
 import { BottomNav } from "./components/BottomNav";
 import { AnnouncementBar } from "./components/AnnouncementBar";
 import { PwaInstallBanner } from "./components/PwaInstallBanner";
@@ -47,7 +48,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, net
    normalises it to a usable pathname for wouter regardless of platform. */
 function getRouterBase(): string {
   try {
-    const raw = import.meta.env.BASE_URL || "/";
+    const raw = riderEnv.baseUrl || "/";
     const u = new URL(raw, window.location.origin);
     return u.pathname.replace(/\/$/, "");
   } catch {

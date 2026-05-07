@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "../lib/auth";
+import { getRiderApiBase } from "../lib/envValidation";
 
-const BASE = import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
-  ? `${(import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")}/api`
-  : `${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/api`;
+const BASE = getRiderApiBase();
 
 interface Popup {
   id: string;

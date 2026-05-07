@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback, ty
 import { io, type Socket } from "socket.io-client";
 import { api, getApiBase } from "./api";
 import { useAuth } from "./auth";
+import { getRiderSocketOrigin } from "./envValidation";
 
 type SocketContextType = {
   socket: Socket | null;
@@ -40,10 +41,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const token = api.getToken();
     if (!token || !user?.id) return;
 
-    /* PWA4: Use centralized getApiBase() helper (COMPLETED) */
-    const socketOrigin = import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
-      ? (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")
-      : window.location.origin;
+    const socketOrigin = getRiderSocketOrigin() ?? window.location.origin;
 
     const s = io(socketOrigin, {
       path: "/api/socket.io",

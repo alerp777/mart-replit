@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api, apiFetch } from "../../lib/api";
+import { riderIsDev } from "../../lib/envValidation";
 import {
   X, ArrowLeft, Landmark, Smartphone, ChevronRight,
   CheckCircle, AlertTriangle, Loader2,
@@ -45,7 +46,7 @@ export default function DepositModal({
         setMethods(depositable);
       }
     }).catch((err: Error) => {
-      if (import.meta.env.DEV) console.warn("[DepositModal] Failed to load payment methods:", err.message);
+      if (riderIsDev) console.warn("[DepositModal] Failed to load payment methods:", err.message);
       setMethodsError(true);
     }).finally(() => setLoadingMethods(false));
   }, []);

@@ -17,13 +17,13 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { vendorEnv, vendorIsDev } from "./envValidation";
 
-/* Mirror the API base URL logic from api.ts so native Capacitor builds send
-   the token to the real backend (VITE_API_BASE_URL) not the WebView origin. */
-const API_ORIGIN =
-  import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
-    ? (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")
-    : "";
+/* API origin for native Capacitor builds; empty string falls through to
+   relative paths in web-proxy mode. Sourced from the validated env singleton. */
+const API_ORIGIN = vendorEnv.isCapacitor && vendorEnv.apiBaseUrl
+  ? vendorEnv.apiBaseUrl.replace(/\/+$/, "")
+  : "";
 
 /** Listener cleanup handle returned to callers for foreground messages. */
 export interface PushCleanup {
@@ -84,7 +84,7 @@ async function registerFcmPush(
 
     const permResult = await PushNotifications.requestPermissions();
     if (permResult.receive !== "granted") {
-      if (import.meta.env.DEV) console.warn("[push] FCM permission denied");
+      if (vendorIsDev) console.warn("[push] FCM permission denied");
       return;
     }
 
@@ -103,7 +103,7 @@ async function registerFcmPush(
         body: JSON.stringify({ type: "fcm", token, role: "vendor" }),
       });
       if (!res.ok) {
-        if (import.meta.env.DEV) console.warn("[push] FCM token registration failed:", res.status, res.statusText);
+        if (vendorIsDev) console.warn("[push] FCM token registration failed:", res.status, res.statusText);
       }
     };
 
@@ -169,7 +169,7 @@ async function registerFcmPush(
 
     return { remove: () => cleanups.forEach((h) => h.remove()) };
   } catch (e) {
-    if (import.meta.env.DEV) console.warn("[push] FCM registration failed:", e);
+    if (vendorIsDev) console.warn("[push] FCM registration failed:", e);
   }
 }
 
@@ -178,7 +178,7 @@ async function registerFcmPush(
 async function registerVapidPush(): Promise<void> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   try {
-    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    const base = (vendorEnv.baseUrl || "/").replace(/\/$/, "");
     const reg = await navigator.serviceWorker.register(`${base}/sw.js`);
     const existing = await reg.pushManager.getSubscription();
     if (existing) return;
@@ -207,7 +207,7 @@ async function registerVapidPush(): Promise<void> {
       }),
     });
   } catch (e) {
-    if (import.meta.env.DEV) console.warn("[push] VAPID registration failed:", e);
+    if (vendorIsDev) console.warn("[push] VAPID registration failed:", e);
   }
 }
 

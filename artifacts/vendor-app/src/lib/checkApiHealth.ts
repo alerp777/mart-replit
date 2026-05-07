@@ -1,9 +1,8 @@
+import { getVendorApiBase } from "./envValidation";
+
 /* Mirror the BASE URL logic from api.ts so the health probe targets the same
    origin as all other API calls, including Capacitor/native contexts. */
-const _apiBase =
-  import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
-    ? `${(import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")}/api`
-    : `${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/api`;
+const _apiBase = getVendorApiBase();
 
 export async function checkApiHealth(): Promise<{ reachable: boolean; url: string }> {
   const url = `${_apiBase}/health`;

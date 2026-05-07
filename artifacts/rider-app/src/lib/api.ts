@@ -1,6 +1,6 @@
-const BASE = import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
-  ? `${(import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")}/api`
-  : `/api`;
+import { getRiderApiBase } from "./envValidation";
+
+const BASE = getRiderApiBase();
 
 /* PWA4: Centralized base URL getter used by socket.tsx and error-reporter.ts to ensure sync */
 export function getApiBase(): string {

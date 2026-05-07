@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import { vendorIsDev } from "./envValidation";
 
 export interface StoreHours { [day: string]: { open: string; close: string; closed?: boolean } }
 
@@ -183,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = await api.getMe();
       setUser(u);
     } catch (e) {
-      if (import.meta.env.DEV) console.error("refreshUser failed:", e);
+      if (vendorIsDev) console.error("refreshUser failed:", e);
     }
   };
 

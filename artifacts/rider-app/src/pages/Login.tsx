@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth, type AuthUser } from "../lib/auth";
 import { api, apiFetch } from "../lib/api";
+import { riderIsDev } from "../lib/envValidation";
 import { usePlatformConfig, getRiderAuthConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -304,7 +305,7 @@ export default function Login() {
         setLockoutUntil(null);
         setFailedAttempts(0);
         try { sessionStorage.removeItem("rider_lockout_until"); sessionStorage.removeItem("rider_login_attempts"); } catch (ssErr) {
-            if (import.meta.env.DEV) console.warn("[Login] Could not clear lockout keys from sessionStorage:", ssErr);
+            if (riderIsDev) console.warn("[Login] Could not clear lockout keys from sessionStorage:", ssErr);
           }
       }
     }, 1000);
@@ -323,7 +324,7 @@ export default function Login() {
          either way, so the rider is signed out client-side regardless. */
       api.storeTokens(res.token, res.refreshToken);
       void api.logout(res.refreshToken).catch((err: Error) => {
-        if (import.meta.env.DEV) console.warn("[Login] Server logout for non-rider failed:", err.message);
+        if (riderIsDev) console.warn("[Login] Server logout for non-rider failed:", err.message);
       });
       setError(T("accessDenied"));
       return false;
@@ -379,14 +380,14 @@ export default function Login() {
       setFailedAttempts(prev => {
         const next = prev + 1;
         try { sessionStorage.setItem("rider_login_attempts", String(next)); } catch (ssErr) {
-          if (import.meta.env.DEV) console.warn("[Login] Could not persist login attempt count to sessionStorage:", ssErr);
+          if (riderIsDev) console.warn("[Login] Could not persist login attempt count to sessionStorage:", ssErr);
         }
         if (next >= auth.lockoutMaxAttempts) {
           const until = Date.now() + auth.lockoutDurationSec * 1000;
           setLockoutUntil(until);
           setLockoutRemaining(auth.lockoutDurationSec);
           try { sessionStorage.setItem("rider_lockout_until", String(until)); } catch (ssErr) {
-            if (import.meta.env.DEV) console.warn("[Login] Could not persist lockout expiry to sessionStorage — lockout state will not survive page refresh:", ssErr);
+            if (riderIsDev) console.warn("[Login] Could not persist lockout expiry to sessionStorage — lockout state will not survive page refresh:", ssErr);
             /* Surface to user: lockout is applied now but won't persist across tab reloads */
             setError(T("accountLockedMsg"));
           }

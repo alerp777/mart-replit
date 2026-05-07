@@ -12,6 +12,7 @@ import "leaflet/dist/leaflet.css";
    covers every map (Active trip, MiniMap, dashboard widgets) before any
    Leaflet instance is constructed. No per-page call is needed here. */
 import { api, apiFetch } from "../lib/api";
+import { riderIsDev } from "../lib/envValidation";
 import { logRideEvent } from "../lib/rideUtils";
 import { useState, useRef, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
 import { usePlatformConfig } from "../lib/useConfig";
@@ -24,7 +25,7 @@ import { enqueue, registerDrainHandler, type QueuedPing } from "../lib/gpsQueue"
 class MapErrorBoundary extends Component<{ children: ReactNode; fallbackMsg?: string }, { hasError: boolean }> {
   state = { hasError: false };
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(_: Error, info: ErrorInfo) { if (import.meta.env.DEV) console.error("MapErrorBoundary caught:", _, info); }
+  componentDidCatch(_: Error, info: ErrorInfo) { if (riderIsDev) console.error("MapErrorBoundary caught:", _, info); }
   render() {
     if (this.state.hasError) {
       return (

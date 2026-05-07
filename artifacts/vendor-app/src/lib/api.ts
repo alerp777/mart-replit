@@ -1,6 +1,6 @@
-const BASE = import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
-  ? `${(import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")}/api`
-  : `${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/api`;
+import { getVendorApiBase } from "./envValidation";
+
+const BASE = getVendorApiBase();
 
 const TOKEN_KEY   = "ajkmart_vendor_token";
 const REFRESH_KEY = "ajkmart_vendor_refresh_token";
