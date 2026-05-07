@@ -14,6 +14,51 @@ interface CallSignal { callId: string; callerId?: string; sdp?: RTCSessionDescri
 
 const STORAGE_KEY = "vendor_quick_replies";
 const MAX_SHORTCUTS = 8;
+
+const SUGGESTED_TEMPLATES: { category: string; icon: string; items: string[] }[] = [
+  {
+    category: "General",
+    icon: "💬",
+    items: [
+      "Thank you for your order! 🙏",
+      "Your order has been received ✅",
+      "We'll update you shortly ⏳",
+      "Please allow a few extra minutes 🙏",
+    ],
+  },
+  {
+    category: "Food",
+    icon: "🍔",
+    items: [
+      "Order is being prepared 🍳",
+      "Ready for pickup 📦",
+      "On its way! 🛵",
+      "Will be ready in 10 mins ⏱",
+      "Our kitchen is a little busy — 15 mins extra ⏳",
+    ],
+  },
+  {
+    category: "Pharmacy",
+    icon: "💊",
+    items: [
+      "Prescription received — preparing your order 💊",
+      "One item is out of stock — we'll contact you shortly",
+      "Your medicine is packed and ready 📦",
+      "Delivery on the way 🛵",
+    ],
+  },
+  {
+    category: "Parcel",
+    icon: "📦",
+    items: [
+      "Parcel received and being processed 📦",
+      "Your parcel is out for delivery 🛵",
+      "Parcel delivered successfully ✅",
+      "We couldn't deliver — please confirm your address",
+    ],
+  },
+];
+
 const DEFAULT_SHORTCUTS = [
   "Order is being prepared 🍳",
   "Ready for pickup 📦",
@@ -46,6 +91,8 @@ function ShortcutsModal({ shortcuts, onSave, onClose }: { shortcuts: string[]; o
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
 
   const addShortcut = () => {
     const trimmed = newText.trim();
@@ -137,27 +184,77 @@ function ShortcutsModal({ shortcuts, onSave, onClose }: { shortcuts: string[]; o
           ))}
         </div>
 
-        <div className="px-5 py-3 border-t">
+        <div className="px-5 py-3 border-t space-y-3">
           {list.length < MAX_SHORTCUTS ? (
-            <div className="flex gap-2 mb-3">
-              <input
-                value={newText}
-                onChange={e => setNewText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") addShortcut(); }}
-                placeholder="Add a new quick reply…"
-                maxLength={120}
-                className="flex-1 h-10 px-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm"
-              />
+            <>
+              <div className="flex gap-2">
+                <input
+                  value={newText}
+                  onChange={e => setNewText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") addShortcut(); }}
+                  placeholder="Add a new quick reply…"
+                  maxLength={120}
+                  className="flex-1 h-10 px-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm"
+                />
+                <button
+                  onClick={addShortcut}
+                  disabled={!newText.trim()}
+                  className="h-10 px-4 bg-orange-500 text-white rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-orange-600 transition"
+                >
+                  Add
+                </button>
+              </div>
+
+              {/* Suggested templates toggle */}
               <button
-                onClick={addShortcut}
-                disabled={!newText.trim()}
-                className="h-10 px-4 bg-orange-500 text-white rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-orange-600 transition"
+                onClick={() => setShowSuggestions(s => !s)}
+                className="w-full flex items-center justify-between text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-100 px-3 py-2 rounded-xl hover:bg-orange-100 transition"
               >
-                Add
+                <span>✨ Pick from suggested templates</span>
+                <span className="text-gray-400">{showSuggestions ? "▲" : "▼"}</span>
               </button>
-            </div>
+
+              {showSuggestions && (
+                <div className="rounded-xl border border-gray-100 overflow-hidden">
+                  {SUGGESTED_TEMPLATES.map(group => (
+                    <div key={group.category}>
+                      <button
+                        onClick={() => setOpenCategory(c => c === group.category ? null : group.category)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition text-left"
+                      >
+                        <span className="text-sm font-bold text-gray-700">{group.icon} {group.category}</span>
+                        <span className="text-gray-400 text-xs">{openCategory === group.category ? "▲" : "▼"}</span>
+                      </button>
+                      {openCategory === group.category && (
+                        <div className="divide-y divide-gray-50">
+                          {group.items.map(item => {
+                            const alreadyAdded = list.includes(item);
+                            return (
+                              <button
+                                key={item}
+                                disabled={alreadyAdded}
+                                onClick={() => { setNewText(item); setShowSuggestions(false); setOpenCategory(null); }}
+                                className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between gap-2 transition
+                                  ${alreadyAdded ? "text-gray-300 bg-white cursor-not-allowed" : "text-gray-700 bg-white hover:bg-orange-50 hover:text-orange-700"}`}
+                              >
+                                <span>{item}</span>
+                                {alreadyAdded ? (
+                                  <span className="text-[10px] text-gray-300 flex-shrink-0">Added</span>
+                                ) : (
+                                  <span className="text-[10px] text-orange-400 flex-shrink-0">Use →</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
-            <p className="text-xs text-gray-400 mb-3 text-center">Maximum {MAX_SHORTCUTS} shortcuts reached. Remove one to add more.</p>
+            <p className="text-xs text-gray-400 text-center">Maximum {MAX_SHORTCUTS} shortcuts reached. Remove one to add more.</p>
           )}
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 h-11 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition">Cancel</button>
