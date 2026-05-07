@@ -18,3 +18,9 @@ id = "WNwtNZYSv_jzPei9DwlSo"
 uri = "file://ajkmart-customer-app.md"
 type = "text"
 title = "AJKMart Customer App — Complete Screen-by-Screen Documentation"
+
+[[outputs]]
+id = "dWHMY7OK6l48wTgTuPdwI"
+uri = "file://ajkmart-admin-panel.md"
+type = "text"
+title = "AJKMart Admin Panel — Complete Documentation"
