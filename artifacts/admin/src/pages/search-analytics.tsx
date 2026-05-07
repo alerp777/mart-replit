@@ -16,6 +16,7 @@ import {
 } from "recharts";
 
 import { apiAbsoluteFetch, fetcher } from "@/lib/api";
+import { SafeImage } from "@/components/ui/SafeImage";
 
 async function apiFetch(path: string) {
   return apiAbsoluteFetch(`/api${path}`);
@@ -610,7 +611,7 @@ export default function SearchAnalyticsPage() {
                       {i + 1}
                     </span>
                     {product.image ? (
-                      <img src={product.image} alt={product.name} className="w-8 h-8 rounded-lg object-cover shrink-0 border" />
+                      <SafeImage src={product.image} alt={product.name} className="w-8 h-8 rounded-lg object-cover shrink-0 border" />
                     ) : (
                       <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
                         <Package className="w-4 h-4 text-gray-400" />

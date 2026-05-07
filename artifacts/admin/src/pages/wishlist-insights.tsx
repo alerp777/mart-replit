@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Heart, TrendingUp, Package, Loader2 } from "lucide-react";
+import { SafeImage } from "@/components/ui/SafeImage";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, CartesianGrid,
@@ -179,7 +180,7 @@ export default function WishlistInsights() {
                     <div key={p.productId} className="flex items-center gap-3 p-3">
                       <span className="font-bold text-muted-foreground text-sm w-6 text-center shrink-0">{i + 1}</span>
                       {p.productImage ? (
-                        <img src={p.productImage} alt="" className="w-10 h-10 rounded-lg object-cover border shrink-0" />
+                        <SafeImage src={p.productImage} alt="" className="w-10 h-10 rounded-lg object-cover border shrink-0" />
                       ) : (
                         <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
                           <Package className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
@@ -231,7 +232,7 @@ export default function WishlistInsights() {
                           <TableCell>
                             <div className="flex items-center gap-3">
                               {p.productImage ? (
-                                <img src={p.productImage} alt="" className="w-10 h-10 rounded-lg object-cover border" />
+                                <SafeImage src={p.productImage} alt="" className="w-10 h-10 rounded-lg object-cover border" />
                               ) : (
                                 <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
                                   <Package className="w-5 h-5 text-muted-foreground" aria-hidden="true" />

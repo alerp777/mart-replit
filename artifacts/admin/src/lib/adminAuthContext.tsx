@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { toast } from '@/hooks/use-toast';
 
 export interface AdminUser {
   id: string;
@@ -84,6 +85,25 @@ const INITIAL_STATE: AuthState = {
 };
 
 /**
+ * Decode the `exp` claim from a JWT access token without verifying its
+ * signature (the server handles verification). Returns `null` when the
+ * token is malformed or the claim is absent.
+ */
+function getJwtExpiry(token: string): number | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof decoded.exp === 'number' ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** How many milliseconds before expiry to warn the admin. */
+const SESSION_WARN_BEFORE_MS = 60_000; // 1 minute
+
+/**
  * Admin Auth Provider
  * Manages authentication state with in-memory access tokens
  * Refresh tokens are stored in HttpOnly cookies (handled by browser automatically)
@@ -94,6 +114,43 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   // Use a ref to prevent concurrent refresh requests
   // This persists across renders so concurrent calls share one in-flight promise
   const refreshPromiseRef = useRef<Promise<string> | null>(null);
+
+  // Timer that fires the session-expiry warning toast
+  const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks which token the current timer was set for (avoids duplicate timers)
+  const timerTokenRef = useRef<string | null>(null);
+
+  /** Schedule a warning toast 60s before the access token expires. */
+  const scheduleExpiryWarning = useCallback((token: string, refreshFn: () => Promise<string>) => {
+    if (timerTokenRef.current === token) return; // already scheduled for this token
+    if (expiryTimerRef.current) { clearTimeout(expiryTimerRef.current); expiryTimerRef.current = null; }
+    timerTokenRef.current = token;
+
+    const expiresAt = getJwtExpiry(token);
+    if (!expiresAt) return;
+
+    const msLeft = expiresAt - Date.now() - SESSION_WARN_BEFORE_MS;
+    if (msLeft <= 0) return; // already expiring — let the 401 handler deal with it
+
+    expiryTimerRef.current = setTimeout(() => {
+      expiryTimerRef.current = null;
+      toast({
+        title: 'Your session expires in 1 minute',
+        description: 'Click "Stay logged in" to continue without interruption.',
+        duration: 55_000,
+        action: {
+          altText: 'Stay logged in',
+          onClick: () => { refreshFn().catch(() => {}); },
+        } as any,
+      });
+    }, msLeft);
+  }, []);
+
+  /** Cancel the expiry warning timer (called on logout or successful refresh). */
+  const cancelExpiryWarning = useCallback(() => {
+    if (expiryTimerRef.current) { clearTimeout(expiryTimerRef.current); expiryTimerRef.current = null; }
+    timerTokenRef.current = null;
+  }, []);
 
   /**
    * Refresh access token using refresh token cookie
@@ -118,6 +175,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         if (!response.ok) {
           if (response.status === 401) {
             // Refresh token expired or invalid - clear auth
+            cancelExpiryWarning();
             setState({ ...INITIAL_STATE, isLoading: false, error: 'Session expired. Please log in again.' });
             throw new Error('Session expired');
           }
@@ -150,7 +208,16 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     })();
 
     return refreshPromiseRef.current;
-  }, []);
+  }, [cancelExpiryWarning]);
+
+  // Schedule the expiry warning whenever the token changes
+  useEffect(() => {
+    if (state.accessToken) {
+      scheduleExpiryWarning(state.accessToken, refreshAccessToken);
+    } else {
+      cancelExpiryWarning();
+    }
+  }, [state.accessToken, scheduleExpiryWarning, cancelExpiryWarning, refreshAccessToken]);
 
   /**
    * On mount, attempt to restore session by refreshing access token
@@ -292,6 +359,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
    * Logout and revoke session
    */
   const logout = useCallback(async () => {
+    cancelExpiryWarning();
     setState((prev) => ({
       ...prev,
       isLoading: true,
@@ -319,7 +387,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       // Clear state anyway
       setState({ ...INITIAL_STATE, isLoading: false });
     }
-  }, [state.accessToken]);
+  }, [state.accessToken, cancelExpiryWarning]);
 
   /**
    * Submit a password change against POST /api/admin/auth/change-password.

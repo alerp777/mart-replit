@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
 
 const EMPTY_FORM = {
   code: "", description: "", discountPct: "", discountFlat: "",
@@ -346,16 +347,14 @@ export default function PromoCodes() {
       {showModal  && <PromoModal onClose={() => setShowModal(false)} />}
       {editPromo  && <PromoModal promo={editPromo} onClose={() => setEditPromo(null)} />}
 
-      {/* Delete Confirm */}
-      <ConfirmDialog
+      {/* Delete Confirm — requires password re-entry */}
+      <SensitiveActionDialog
         open={!!deleteId}
         onClose={() => setDeleteId(null)}
-        onConfirm={() => deleteId && handleDelete(deleteId)}
+        onConfirm={() => { if (deleteId) handleDelete(deleteId); }}
         title={tDual("deletePromoCodeTitle", language)}
         description={tDual("actionCannotBeUndone", language)}
         confirmLabel="Delete"
-        variant="destructive"
-        busy={deleteMutation.isPending}
       />
     </div>
   );

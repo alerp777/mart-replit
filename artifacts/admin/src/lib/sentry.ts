@@ -15,7 +15,7 @@ export function initSentry(cfg: SentryConfig): void {
   Sentry.init({
     dsn: cfg.dsn,
     environment: cfg.environment || "production",
-    sampleRate: cfg.sampleRate ?? 1.0,
+    sampleRate: cfg.sampleRate ?? 0.2,
     tracesSampleRate: cfg.tracesSampleRate ?? 0.1,
     integrations: [Sentry.browserTracingIntegration()],
     beforeSend(event) {

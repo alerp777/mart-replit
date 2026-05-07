@@ -1,5 +1,6 @@
 import { readCsrfFromCookie } from './adminAuthContext.js';
 import { safeSessionSet } from './safeStorage';
+import { toast } from '@/hooks/use-toast';
 
 /**
  * Typed Error for non-2xx admin fetcher responses. Replaces the previous
@@ -13,6 +14,68 @@ export class AdminFetchError extends Error {
     this.name = 'AdminFetchError';
     this.status = status;
   }
+}
+
+/**
+ * Typed error for requests that exceeded the timeout window.
+ * Callers can `instanceof TimeoutError` to show specific UX.
+ */
+export class TimeoutError extends Error {
+  constructor(message = 'Request timed out') {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+/** Abort requests that take longer than this (milliseconds). */
+const FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Returns an AbortSignal that fires after `ms` milliseconds.
+ * Merges with an optional external signal so either side can abort.
+ */
+function timeoutSignal(ms: number, externalSignal?: AbortSignal): AbortSignal {
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(new TimeoutError()), ms);
+
+  // Clear the timer if the controller's own signal fires first
+  controller.signal.addEventListener('abort', () => clearTimeout(timerId), { once: true });
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort(externalSignal.reason);
+    } else {
+      externalSignal.addEventListener(
+        'abort',
+        () => { clearTimeout(timerId); controller.abort(externalSignal.reason); },
+        { once: true },
+      );
+    }
+  }
+
+  return controller.signal;
+}
+
+/**
+ * If an error is a TimeoutError (or an AbortError caused by our timeout),
+ * show a toast so the user knows the request hung.
+ */
+function handleTimeoutError(err: unknown, retry?: () => void): void {
+  const isTimeout =
+    err instanceof TimeoutError ||
+    (err instanceof DOMException && err.name === 'AbortError' && err.message.includes('timeout'));
+  if (!isTimeout) return;
+  toast({
+    title: 'Request timed out',
+    description: 'Check your connection and try again.',
+    variant: 'destructive',
+    action: retry
+      ? {
+          altText: 'Retry',
+          onClick: retry,
+        } as any
+      : undefined,
+  });
 }
 
 // Global handlers set by the app
@@ -32,11 +95,12 @@ export function setupAdminFetcherHandlers(
 }
 
 /**
- * Admin API fetcher with auto-refresh and CSRF protection
+ * Admin API fetcher with auto-refresh, CSRF protection, and 30-second timeout.
  * - Automatically includes Authorization header with access token
  * - Automatically includes X-CSRF-Token header by reading from cookie
  * - Automatically refreshes token on 401 and retries
  * - Redirects to login on repeated 401
+ * - Aborts and shows a toast after FETCH_TIMEOUT_MS
  */
 export async function fetchAdmin(
   endpoint: string,
@@ -72,14 +136,25 @@ export async function fetchAdmin(
   };
 
   const makeRequest = async (accessToken: string) => {
-    const response = await fetch(`/api/admin${endpoint}`, {
-      ...options,
-      headers: {
-        ...headers,
-        'Authorization': `Bearer ${accessToken}`,
-      },
-      credentials: 'include', // Include cookies (refresh_token, csrf_token)
-    });
+    const signal = timeoutSignal(FETCH_TIMEOUT_MS, options.signal as AbortSignal | undefined);
+
+    let response: Response;
+    try {
+      response = await fetch(`/api/admin${endpoint}`, {
+        ...options,
+        signal,
+        headers: {
+          ...headers,
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        credentials: 'include', // Include cookies (refresh_token, csrf_token)
+      });
+    } catch (err) {
+      if (err instanceof TimeoutError || (err instanceof DOMException && err.name === 'AbortError')) {
+        handleTimeoutError(new TimeoutError());
+      }
+      throw err;
+    }
 
     // Handle 401 Unauthorized
     if (response.status === 401) {
@@ -88,9 +163,11 @@ export async function fetchAdmin(
         const newToken = await refreshToken!();
         headers['Authorization'] = `Bearer ${newToken}`;
 
+        const retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
         // Retry the request with new token
         const retryResponse = await fetch(`/api/admin${endpoint}`, {
           ...options,
+          signal: retrySignal,
           headers,
           credentials: 'include',
         });
@@ -159,17 +236,26 @@ export async function fetchAdminAbsolute(
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  let response = await fetch(path, {
-    ...options,
-    headers: { ...headers, 'Authorization': `Bearer ${token}` },
-    credentials: 'include',
-  });
+  let response: Response;
+  try {
+    const signal = timeoutSignal(FETCH_TIMEOUT_MS, options.signal as AbortSignal | undefined);
+    response = await fetch(path, {
+      ...options,
+      signal,
+      headers: { ...headers, 'Authorization': `Bearer ${token}` },
+      credentials: 'include',
+    });
+  } catch (err) {
+    handleTimeoutError(err);
+    throw err;
+  }
 
   if (response.status === 401) {
     try {
       const newToken = await refreshToken!();
       headers['Authorization'] = `Bearer ${newToken}`;
-      response = await fetch(path, { ...options, headers, credentials: 'include' });
+      const retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
+      response = await fetch(path, { ...options, signal: retrySignal, headers, credentials: 'include' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (err) {
       console.error('Token refresh failed (absolute):', err);
@@ -222,13 +308,21 @@ export async function fetchAdminAbsoluteResponse(
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  let response = await fetch(path, { ...options, headers: baseHeaders, credentials: 'include' });
+  let response: Response;
+  try {
+    const signal = timeoutSignal(FETCH_TIMEOUT_MS, options.signal as AbortSignal | undefined);
+    response = await fetch(path, { ...options, signal, headers: baseHeaders, credentials: 'include' });
+  } catch (err) {
+    handleTimeoutError(err);
+    throw err;
+  }
 
   if (response.status === 401) {
     try {
       const newToken = await refreshToken!();
       baseHeaders['Authorization'] = `Bearer ${newToken}`;
-      response = await fetch(path, { ...options, headers: baseHeaders, credentials: 'include' });
+      const retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
+      response = await fetch(path, { ...options, signal: retrySignal, headers: baseHeaders, credentials: 'include' });
     } catch (err) {
       console.error('Token refresh failed (response):', err);
       safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');

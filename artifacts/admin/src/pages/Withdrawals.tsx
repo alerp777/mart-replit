@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { formatCurrency } from "@/lib/format";
+import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
 
 const fc = formatCurrency;
 const fd = (d: string | Date) =>
@@ -209,6 +210,7 @@ export default function Withdrawals() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<any | null>(null);
   const [rejectTarget,  setRejectTarget]  = useState<any | null>(null);
+  const [sensitiveApproveTarget, setSensitiveApproveTarget] = useState<any | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchRejectReason, setBatchRejectReason] = useState("");
 
@@ -423,7 +425,7 @@ export default function Withdrawals() {
                         <div className="flex gap-3">
                           <Button size="sm"
                             className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold gap-2"
-                            onClick={() => setApproveTarget(w)}>
+                            onClick={() => setSensitiveApproveTarget(w)}>
                             <CheckCircle className="w-4 h-4"/> Approve & Mark Paid
                           </Button>
                           <Button size="sm" variant="outline"
@@ -465,6 +467,19 @@ export default function Withdrawals() {
 
       {approveTarget && <ApproveModal w={approveTarget} onClose={() => setApproveTarget(null)}/>}
       {rejectTarget  && <RejectModal  w={rejectTarget}  onClose={() => setRejectTarget(null)}/>}
+
+      {/* Sensitive password confirmation before withdrawal approval */}
+      <SensitiveActionDialog
+        open={!!sensitiveApproveTarget}
+        onClose={() => setSensitiveApproveTarget(null)}
+        onConfirm={() => {
+          setApproveTarget(sensitiveApproveTarget);
+          setSensitiveApproveTarget(null);
+        }}
+        title="Approve Withdrawal"
+        description={`Approving ${fc(Number(sensitiveApproveTarget?.amount))} payout to ${sensitiveApproveTarget?.user?.name || sensitiveApproveTarget?.user?.phone || "this user"}. Confirm your identity to proceed.`}
+        confirmLabel="Proceed to Approve"
+      />
     </div>
   );
 }

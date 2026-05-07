@@ -1,35 +1,72 @@
-import { useEffect, useState } from "react";
-import { WifiOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { WifiOff, Wifi } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+
+type ConnectionState = "online" | "offline" | "restoring";
 
 /**
  * OnlineStatusBanner — explicit "you are offline" indicator that watches
  * `navigator.onLine` and the `online` / `offline` window events.
  *
- * The admin panel is intentionally an online-only product (it operates on
- * live moderation data, see the explanation under "Offline/PWA Issues" in
- * `bugs.md`). Rather than ship an offline cache, we surface a clear
- * banner so admins immediately understand why writes are failing.
- *
- * Renders nothing when online — zero layout impact in the happy path.
+ * States:
+ * - offline: Red/amber banner — "You are offline"
+ * - restoring: Transitional 2-second banner — "Restoring connection…"
+ *   (fires invalidateQueries so stale data refreshes once the network returns)
+ * - online: Renders nothing — zero layout impact in the happy path.
  */
 export function OnlineStatusBanner() {
-  const [isOnline, setIsOnline] = useState<boolean>(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
+  const queryClient = useQueryClient();
+  const [connState, setConnState] = useState<ConnectionState>(() =>
+    typeof navigator === "undefined" || navigator.onLine ? "online" : "offline",
   );
+  const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
+
+    const goOnline = () => {
+      // Show "restoring" briefly, then invalidate queries and hide
+      setConnState("restoring");
+      if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
+      restoreTimerRef.current = setTimeout(() => {
+        queryClient.invalidateQueries();
+        setConnState("online");
+        restoreTimerRef.current = null;
+      }, 2000);
+    };
+
+    const goOffline = () => {
+      if (restoreTimerRef.current) {
+        clearTimeout(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+      setConnState("offline");
+    };
+
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
     return () => {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
+      if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
     };
-  }, []);
+  }, [queryClient]);
 
-  if (isOnline) return null;
+  if (connState === "online") return null;
+
+  if (connState === "restoring") {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        data-testid="online-status-banner"
+        className="fixed inset-x-0 top-0 z-[var(--z-toast,90)] flex items-center justify-center gap-2 border-b border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 shadow-sm"
+      >
+        <Wifi className="h-4 w-4 animate-pulse" aria-hidden="true" />
+        <span>Restoring connection…</span>
+      </div>
+    );
+  }
 
   return (
     <div

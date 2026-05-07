@@ -19,6 +19,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { StatusBadge } from "@/components/AdminShared";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { SafeImage } from "@/components/ui/SafeImage";
 
 interface Banner {
   id: string;
@@ -479,7 +480,7 @@ export default function BannersPage() {
               </div>
               {form.imageUrl && (
                 <div className="mt-2 rounded-lg overflow-hidden border border-border h-24">
-                  <img src={form.imageUrl} alt="Preview" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.display = "none")} />
+                  <SafeImage src={form.imageUrl} alt="Preview" className="w-full h-full object-cover" />
                 </div>
               )}
             </div>

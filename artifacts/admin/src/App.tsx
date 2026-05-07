@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -134,6 +134,44 @@ queryClient.getQueryCache().subscribe(event => {
   }
 });
 
+/** How long (ms) before a stuck loader shows the error fallback. */
+const LOADER_TIMEOUT_MS = 10_000;
+
+/**
+ * Hook that returns true after `ms` milliseconds while `loading` stays true.
+ * Resets whenever `loading` flips to false.
+ */
+function useLoaderTimeout(loading: boolean, ms = LOADER_TIMEOUT_MS): boolean {
+  const [timedOut, setTimedOut] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!loading) {
+      setTimedOut(false);
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      return;
+    }
+    timerRef.current = setTimeout(() => setTimedOut(true), ms);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [loading, ms]);
+
+  return timedOut;
+}
+
+function StuckLoaderFallback({ label = "Loading timed out" }: { label?: string }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center p-8">
+      <p className="text-sm text-muted-foreground max-w-xs">{label}</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:opacity-90 transition-opacity"
+      >
+        Reload page
+      </button>
+    </div>
+  );
+}
+
 function ProtectedRoute({
   component: Component,
   /**
@@ -157,6 +195,7 @@ function ProtectedRoute({
   const { has, isSuper, legacyToken } = usePermissions();
 
   const permDenied = !!(requiredPermission && !isSuper && !legacyToken && !has(requiredPermission));
+  const authTimedOut = useLoaderTimeout(state.isLoading);
 
   useEffect(() => {
     if (!state.isLoading && !state.accessToken) {
@@ -171,6 +210,9 @@ function ProtectedRoute({
   }, [permDenied, state.isLoading, state.accessToken, setLocation]);
 
   if (state.isLoading) {
+    if (authTimedOut) {
+      return <StuckLoaderFallback label="The authentication check is taking too long. This may be a connection issue." />;
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -241,6 +283,7 @@ function ProtectedRoute({
 function RootRedirect() {
   const { state } = useAdminAuth();
   const [, setLocation] = useLocation();
+  const rootTimedOut = useLoaderTimeout(state.isLoading);
 
   useEffect(() => {
     if (state.isLoading) return;
@@ -250,6 +293,9 @@ function RootRedirect() {
   }, [state.isLoading, state.accessToken, setLocation]);
 
   if (state.isLoading) {
+    if (rootTimedOut) {
+      return <StuckLoaderFallback label="Session restore is taking too long. Please reload to try again." />;
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />

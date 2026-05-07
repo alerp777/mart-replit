@@ -10,6 +10,7 @@ import {
 import { PageHeader, StatCard } from "@/components/shared";
 
 import { apiAbsoluteFetchRaw } from "@/lib/api";
+import { SafeImage } from "@/components/ui/SafeImage";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const STATUS_CONFIG = {
@@ -317,7 +318,7 @@ function KycDetailPanel({ record, onClose, onApprove, onReject }: {
                     <div key={key} className="text-center">
                       {url ? (
                         <button onClick={() => setPhoto({ url, label })} className="w-full group relative">
-                          <img src={url} alt={label} className="w-full h-24 object-cover rounded-xl border border-gray-100" />
+                          <SafeImage src={url} alt={label} className="w-full h-24 object-cover rounded-xl border border-gray-100" />
                           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl transition flex items-center justify-center">
                             <Eye size={18} className="text-white" />
                           </div>
@@ -370,7 +371,7 @@ function KycDetailPanel({ record, onClose, onApprove, onReject }: {
                       <div key={key} className="text-center">
                         {url ? (
                           <button onClick={() => setPhoto({ url, label })} className="w-full group relative">
-                            <img src={url} alt={label} className="w-full h-28 object-cover rounded-xl border border-gray-100" />
+                            <SafeImage src={url} alt={label} className="w-full h-28 object-cover rounded-xl border border-gray-100" />
                             <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl transition flex items-center justify-center">
                               <Eye size={18} className="text-white" />
                             </div>

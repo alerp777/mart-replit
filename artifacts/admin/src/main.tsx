@@ -21,6 +21,22 @@ if (import.meta.env.DEV) {
 
 loadPlatformConfig();
 
+// Core Web Vitals — only in production so dev noise doesn't pollute analytics
+if (import.meta.env.PROD) {
+  import("web-vitals").then(({ onCLS, onFCP, onLCP, onTTFB, onINP }) => {
+    import("./lib/analytics").then(({ trackEvent }) => {
+      const report = ({ name, value, rating }: { name: string; value: number; rating?: string }) => {
+        trackEvent("web_vital", { name, value, rating });
+      };
+      onCLS(report);
+      onFCP(report);
+      onLCP(report);
+      onTTFB(report);
+      onINP(report);
+    });
+  });
+}
+
 (async () => {
   const container = document.getElementById("root")!;
   const root = createRoot(container);

@@ -17,6 +17,7 @@ import {
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { StatusBadge } from "@/components/AdminShared";
+import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
 
 /* ── Types ── */
 interface Product { id: string; name: string; price: string | number; category: string; image?: string }
@@ -57,6 +58,7 @@ export default function FlashDealsPage() {
   const [dealForm, setDealForm] = useState({ ...EMPTY_DEAL });
   const [editingDeal, setEditingDeal] = useState<FlashDeal|null>(null);
   const [dealDialog, setDealDialog] = useState(false);
+  const [deletingDealId, setDeletingDealId] = useState<string | null>(null);
 
   /* ── Queries ── */
   const { data: dealsData, isLoading: dealsLoading } = useQuery({
@@ -229,7 +231,7 @@ export default function FlashDealsPage() {
                             <Pencil className="w-4 h-4 text-blue-600"/>
                           </button>
                           <button
-                            onClick={() => deleteDeal.mutate(deal.id)}
+                            onClick={() => setDeletingDealId(deal.id)}
                             disabled={deleteDeal.isPending}
                             className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                           >
@@ -393,6 +395,16 @@ export default function FlashDealsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete flash deal — requires password re-entry */}
+      <SensitiveActionDialog
+        open={!!deletingDealId}
+        onClose={() => setDeletingDealId(null)}
+        onConfirm={() => { if (deletingDealId) deleteDeal.mutate(deletingDealId); }}
+        title="Delete Flash Deal"
+        description="This flash deal will be permanently removed. This action cannot be undone."
+        confirmLabel="Delete Deal"
+      />
 
     </div>
   );

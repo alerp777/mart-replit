@@ -887,6 +887,74 @@ router.delete(
 );
 
 /**
+ * POST /api/admin/auth/verify-password
+ * Authenticated endpoint. Verifies the caller's current password without
+ * changing it. Used by the SensitiveActionDialog before executing
+ * destructive or high-privilege actions (role changes, user delete, etc.).
+ * Returns 200 on success, 401 on wrong password.
+ */
+router.post(
+  '/auth/verify-password',
+  authenticateAdmin,
+  csrfProtection,
+  async (req: Request, res: Response) => {
+    const ip = getClientIp(req);
+    const userAgent = req.headers['user-agent'];
+    const adminId = req.admin?.sub;
+
+    if (!adminId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+    const password = (req.body as { password?: string }).password ?? '';
+    if (!password) {
+      res.status(400).json({ error: 'password is required' }); return;
+    }
+
+    const [admin] = await db
+      .select()
+      .from(adminAccountsTable)
+      .where(eq(adminAccountsTable.id, adminId))
+      .limit(1);
+
+    // Super-admin (no DB row) — fall back to env secret
+    if (!admin) {
+      const { getAdminSecret } = await import('../routes/admin-shared.js');
+      const ADMIN_SECRET = await getAdminSecret();
+      if (ADMIN_SECRET && password === ADMIN_SECRET) {
+        await logAdminAudit('admin_sensitive_action_verified', {
+          adminId,
+          ip,
+          userAgent,
+          result: 'success',
+        });
+        res.json({ success: true }); return;
+      }
+      res.status(401).json({ error: 'Incorrect password' }); return;
+    }
+
+    const { verifyAdminSecret } = await import('../services/password.js');
+    if (!verifyAdminSecret(password, admin.secret)) {
+      await logAdminAudit('admin_sensitive_action_verify_failed', {
+        adminId,
+        ip,
+        userAgent,
+        result: 'failure',
+        reason: 'incorrect password',
+      });
+      res.status(401).json({ error: 'Incorrect password' }); return;
+    }
+
+    await logAdminAudit('admin_sensitive_action_verified', {
+      adminId,
+      ip,
+      userAgent,
+      result: 'success',
+    });
+
+    res.json({ success: true });
+  }
+);
+
+/**
  * DELETE /api/admin/auth/sessions
  * Revoke all sessions for the authenticated admin
  * (Logout from all devices)

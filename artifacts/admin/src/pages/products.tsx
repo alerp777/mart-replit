@@ -17,6 +17,7 @@ import { UploadProgress } from "@/components/ui/UploadProgress";
 import type { ProductRow } from "@/lib/adminApiTypes";
 import { useHasPermission } from "@/hooks/usePermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { SafeImage } from "@/components/ui/SafeImage";
 
 const errMsg = (e: unknown): string =>
   e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown error";
@@ -303,7 +304,7 @@ export default function Products() {
               >
                 {imagePreview ? (
                   <>
-                    <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+                    <SafeImage src={imagePreview} alt="preview" className="w-full h-full object-cover" />
                     {imageUploading && (
                       <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
                         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />

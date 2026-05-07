@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAbortableEffect, isAbortError } from "@/lib/useAbortableEffect";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface PermissionDef {
@@ -246,6 +247,8 @@ export default function RolesPermissionsPage() {
   const [filter, setFilter] = useState("");
   const [tab, setTab] = useState<"roles" | "admins">("roles");
   const [confirmRemoveRole, setConfirmRemoveRole] = useState(false);
+  const [sensitiveDeleteRole, setSensitiveDeleteRole] = useState(false);
+  const [sensitiveSavePerms, setSensitiveSavePerms] = useState(false);
 
   /* ── Single-dialog create role ──────────────────────────────────── */
   const [showCreateRole, setShowCreateRole] = useState(false);
@@ -724,12 +727,12 @@ export default function RolesPermissionsPage() {
                       />
                     </div>
                     {canManage && !activeRole.isBuiltIn && (
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmRemoveRole(true)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                      <Button variant="ghost" size="sm" onClick={() => setSensitiveDeleteRole(true)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
                         <Trash2 className="h-4 w-4 mr-1.5" /> Delete
                       </Button>
                     )}
                     {canManage && (
-                      <Button onClick={save} disabled={!dirty || saving} className="relative">
+                      <Button onClick={() => setSensitiveSavePerms(true)} disabled={!dirty || saving} className="relative">
                         <Save className="h-4 w-4 mr-1.5" />
                         {saving ? "Saving…" : "Save"}
                         {dirty && !saving && (
@@ -960,15 +963,24 @@ export default function RolesPermissionsPage() {
         onClose={() => { setShowDiscardDialog(false); setPendingRole(null); }}
       />
 
-      {/* ── Delete role confirmation ─────────────────────────────────── */}
-      <ConfirmDialog
-        open={confirmRemoveRole}
-        onClose={() => setConfirmRemoveRole(false)}
+      {/* ── Delete role — requires password re-entry ─────────────────── */}
+      <SensitiveActionDialog
+        open={sensitiveDeleteRole}
+        onClose={() => setSensitiveDeleteRole(false)}
         onConfirm={performRemoveRole}
         title="Delete role"
         description={activeRole ? `Delete role "${activeRole.name}"? This cannot be undone.` : ""}
-        confirmLabel="Delete"
-        variant="destructive"
+        confirmLabel="Delete Role"
+      />
+
+      {/* ── Save permissions — requires password re-entry ─────────────── */}
+      <SensitiveActionDialog
+        open={sensitiveSavePerms}
+        onClose={() => setSensitiveSavePerms(false)}
+        onConfirm={save}
+        title="Save permission changes"
+        description={activeRole ? `You are about to update permissions for "${activeRole.name}". Confirm your identity to proceed.` : ""}
+        confirmLabel="Save Permissions"
       />
     </div>
   );

@@ -29,6 +29,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MobileDrawer } from "@/components/MobileDrawer";
+import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
 
 const ROLE_COLORS: Record<string, string> = {
   customer: "bg-blue-100 text-blue-700 border-blue-200",
@@ -2274,19 +2275,14 @@ export default function Users() {
         />
       )}
 
-      <Dialog open={!!deleteUser} onOpenChange={open => { if (!open) setDeleteUser(null); }}>
-        <DialogContent className="w-[95vw] max-w-sm rounded-2xl p-6">
-          <DialogHeader><DialogTitle className="text-red-600 flex items-center gap-2"><Trash2 className="w-5 h-5" /> Delete User?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground mt-2">Are you sure you want to permanently delete <strong>"{deleteUser?.name || deleteUser?.phone}"</strong>? This cannot be undone.</p>
-          <div className="flex gap-3 mt-6">
-            <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDeleteUser(null)}>Cancel</Button>
-            <Button variant="destructive" className="flex-1 rounded-xl gap-2" onClick={handleDelete} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              {deleteMutation.isPending ? "Deleting..." : "Delete User"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SensitiveActionDialog
+        open={!!deleteUser}
+        onClose={() => setDeleteUser(null)}
+        onConfirm={handleDelete}
+        title="Delete User"
+        description={`Are you sure you want to permanently delete "${deleteUser?.name || deleteUser?.phone}"? This cannot be undone.`}
+        confirmLabel="Delete User"
+      />
 
       {activityUser && <UserActivityModal userId={activityUser.id} userName={activityUser.name || activityUser.phone} user={activityUser} onClose={() => setActivityUser(null)} />}
 
