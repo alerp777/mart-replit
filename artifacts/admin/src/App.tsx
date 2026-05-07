@@ -139,6 +139,27 @@ queryClient.getQueryCache().subscribe(event => {
 const LOADER_TIMEOUT_MS = 10_000;
 
 /**
+ * Shown as the Suspense fallback while heavy lazy-loaded routes (e.g.
+ * live-riders-map) are being fetched. After 10 seconds it transitions to
+ * an ErrorRetry so the admin always has a recovery path if the chunk fails.
+ */
+function SuspenseLoadingFallback() {
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setTimedOut(true), LOADER_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, []);
+  if (timedOut) {
+    return <ErrorRetry variant="page" title="Loading timed out" description="The page chunk took too long to load. Check your connection and try again." />;
+  }
+  return (
+    <div className="flex items-center justify-center p-12">
+      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+/**
  * Hook that returns true after `ms` milliseconds while `loading` stays true.
  * Resets whenever `loading` flips to false.
  */
@@ -246,11 +267,7 @@ function ProtectedRoute({
         {/* Suspense fallback only matters for the lazy-loaded heavy
             routes (live-riders-map, error-monitor, communication).
             Eager-imported pages render synchronously and skip it. */}
-        <Suspense fallback={
-          <div className="flex items-center justify-center p-12">
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        }>
+        <Suspense fallback={<SuspenseLoadingFallback />}>
           <Component />
         </Suspense>
       </ErrorBoundary>

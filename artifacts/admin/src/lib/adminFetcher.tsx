@@ -155,12 +155,13 @@ export async function fetchAdmin(
       // Only show toast for our own timeout — not for external aborts
       // (e.g. component unmount). The AbortController abort reason is set to
       // a TimeoutError instance, so we can distinguish them cleanly.
+      // We also rethrow as TimeoutError so callers can `instanceof` it reliably.
       const retryFn = () => { fetchAdmin(endpoint, options).catch(() => {}); };
-      if (err instanceof TimeoutError) {
-        handleTimeoutError(err, retryFn);
-      } else if (err instanceof DOMException && err.name === 'AbortError') {
-        const reason = (signal as AbortSignal & { reason?: unknown }).reason;
-        if (reason instanceof TimeoutError) handleTimeoutError(reason, retryFn);
+      const reason = (signal as AbortSignal & { reason?: unknown }).reason;
+      const timeoutErr = err instanceof TimeoutError ? err : reason instanceof TimeoutError ? reason : null;
+      if (timeoutErr) {
+        handleTimeoutError(timeoutErr, retryFn);
+        throw timeoutErr;
       }
       throw err;
     }
@@ -245,18 +246,27 @@ export async function fetchAdminAbsolute(
     ...(options.headers as Record<string, string> | undefined),
   };
 
+  const retryAbsoluteFn = () => { fetchAdminAbsolute(path, options).catch(() => {}); };
   let response: Response;
-  try {
+  {
     const signal = timeoutSignal(FETCH_TIMEOUT_MS, options.signal as AbortSignal | undefined);
-    response = await fetch(path, {
-      ...options,
-      signal,
-      headers: { ...headers, 'Authorization': `Bearer ${token}` },
-      credentials: 'include',
-    });
-  } catch (err) {
-    handleTimeoutError(err, () => { fetchAdminAbsolute(path, options).catch(() => {}); });
-    throw err;
+    try {
+      response = await fetch(path, {
+        ...options,
+        signal,
+        headers: { ...headers, 'Authorization': `Bearer ${token}` },
+        credentials: 'include',
+      });
+    } catch (err) {
+      // Check if this was our internal timeout (signal.reason is a TimeoutError)
+      const reason = (signal as AbortSignal & { reason?: unknown }).reason;
+      const timeoutErr = err instanceof TimeoutError ? err : reason instanceof TimeoutError ? reason : null;
+      if (timeoutErr) {
+        handleTimeoutError(timeoutErr, retryAbsoluteFn);
+        throw timeoutErr;
+      }
+      throw err;
+    }
   }
 
   if (response.status === 401) {
@@ -317,13 +327,21 @@ export async function fetchAdminAbsoluteResponse(
     ...(options.headers as Record<string, string> | undefined),
   };
 
+  const retryResponseFn = () => { fetchAdminAbsoluteResponse(path, options).catch(() => {}); };
   let response: Response;
-  try {
+  {
     const signal = timeoutSignal(FETCH_TIMEOUT_MS, options.signal as AbortSignal | undefined);
-    response = await fetch(path, { ...options, signal, headers: baseHeaders, credentials: 'include' });
-  } catch (err) {
-    handleTimeoutError(err, () => { fetchAdminAbsoluteResponse(path, options).catch(() => {}); });
-    throw err;
+    try {
+      response = await fetch(path, { ...options, signal, headers: baseHeaders, credentials: 'include' });
+    } catch (err) {
+      const reason = (signal as AbortSignal & { reason?: unknown }).reason;
+      const timeoutErr = err instanceof TimeoutError ? err : reason instanceof TimeoutError ? reason : null;
+      if (timeoutErr) {
+        handleTimeoutError(timeoutErr, retryResponseFn);
+        throw timeoutErr;
+      }
+      throw err;
+    }
   }
 
   if (response.status === 401) {
