@@ -149,8 +149,9 @@ function AppRoutes() {
     } else {
       setGeofencePolygon(null);
     }
-    const maxSpeed = config?.security?.gpsMaxSpeedKmh;
-    if (typeof maxSpeed === "number") setMaxSpeedKmh(maxSpeed);
+    /* Reset to default (200 km/h) when platform config does not supply a value
+       so stale thresholds from a previous config load don't carry over. */
+    setMaxSpeedKmh(config?.security?.gpsMaxSpeedKmh ?? 200);
   }, [config?.geofence, config?.security?.gpsMaxSpeedKmh]);
 
   /* ── Sentry + Analytics init from platform config ── */

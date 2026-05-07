@@ -152,7 +152,12 @@ export default function Reviews() {
                       : <><Package size={10}/> {review.orderType ?? "Order"}</>
                     }
                   </span>
-                  <p className="text-[10px] text-gray-400 mt-1">{formatDate(review.createdAt)}</p>
+                  {(review.orderId || review.rideId) && (
+                    <p className="text-[10px] font-mono text-gray-400 mt-1 truncate max-w-[120px]">
+                      #{(review.orderId ?? review.rideId ?? "").slice(-8).toUpperCase()}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-gray-400 mt-0.5">{formatDate(review.createdAt)}</p>
                 </div>
               </div>
 
