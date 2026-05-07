@@ -8,6 +8,7 @@ import {
   Car, FileText,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/shared";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 import { apiAbsoluteFetchRaw } from "@/lib/api";
 import { SafeImage } from "@/components/ui/SafeImage";
@@ -578,10 +579,7 @@ export default function KycPage() {
                   </div>
                   <div className="col-span-2 text-sm text-gray-600">{rec.city ?? "—"}</div>
                   <div className="col-span-2">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${stConf.bg} ${stConf.color} border ${stConf.border}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${stConf.dot}`} />
-                      {stConf.label}
-                    </span>
+                    <StatusBadge status={rec.status} label={stConf.label} size="sm" />
                   </div>
                   <div className="col-span-2 text-xs text-gray-400">
                     {new Date(rec.submittedAt).toLocaleDateString("en-PK", { day: "2-digit", month: "short" })}

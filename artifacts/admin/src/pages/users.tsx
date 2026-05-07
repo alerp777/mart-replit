@@ -7,6 +7,7 @@ import {
   Download, FileText, CalendarDays, Eye, AlertCircle, MessageSquare,
   Users as UsersIcon, Loader2, AtSign, Phone, Mail, User as UserIcon,
   Gavel, Lock, Copy, UserPlus, Monitor, ChevronDown, ChevronLeft, ChevronRight,
+  ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { PageHeader, StatCard, FilterBar, ActionBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
@@ -31,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MobileDrawer } from "@/components/MobileDrawer";
 import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 const ROLE_COLORS: Record<string, string> = {
   customer: "bg-blue-100 text-blue-700 border-blue-200",
@@ -38,6 +40,33 @@ const ROLE_COLORS: Record<string, string> = {
   vendor:   "bg-orange-100 text-orange-700 border-orange-200",
   admin:    "bg-purple-100 text-purple-700 border-purple-200",
 };
+
+type UserSortKey = "name" | "wallet" | "status" | "joined";
+type UserSortDir = "asc" | "desc";
+
+function UserSortBtn({ label, col, sortKey, sortDir, onSort }: {
+  label: string; col: UserSortKey; sortKey: UserSortKey; sortDir: UserSortDir;
+  onSort: (k: UserSortKey) => void;
+}) {
+  const isActive = sortKey === col;
+  return (
+    <button
+      onClick={() => onSort(col)}
+      className="flex items-center gap-1 font-semibold hover:text-foreground transition-colors group text-left whitespace-nowrap"
+    >
+      {label}
+      <span className="shrink-0">
+        {isActive ? (
+          sortDir === "asc"
+            ? <ArrowUp className="w-3.5 h-3.5 text-primary" />
+            : <ArrowDown className="w-3.5 h-3.5 text-primary" />
+        ) : (
+          <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+        )}
+      </span>
+    </button>
+  );
+}
 
 function SkeletonRow() {
   return (
@@ -1615,12 +1644,25 @@ export default function Users() {
   const [dateTo, setDateTo]     = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 50;
+  const [sortKey, setSortKey] = useState<UserSortKey>("joined");
+  const [sortDir, setSortDir] = useState<UserSortDir>("desc");
+  const handleUserSort = (key: UserSortKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+  const [lastRefreshed, setLastRefreshed] = useState<number>(0);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
   useEffect(() => { setCurrentPage(1); }, [conditionTier, statusFilter, debouncedSearch, roleFilter, dateFrom, dateTo]);
+  useEffect(() => { if (!isLoading && data) setLastRefreshed(Date.now()); }, [data, isLoading]);
+  useEffect(() => {
+    const handler = () => setCreateUserOpen(true);
+    window.addEventListener("admin:new-item", handler);
+    return () => window.removeEventListener("admin:new-item", handler);
+  }, []);
   const { data, isLoading, refetch, isFetching, isError, error } = useUsers({
     conditionTier: conditionTier !== "all" ? conditionTier : undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
@@ -1718,6 +1760,14 @@ export default function Users() {
   const activeCount  = data?.activeCount  ?? users.filter((u: any) => u.isActive && !u.isBanned).length;
   const totalCount   = data?.totalCount   ?? data?.total ?? users.length;
 
+  const sortedUsers = [...filtered].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    if (sortKey === "name")   return dir * ((a.name || a.phone || "").localeCompare(b.name || b.phone || ""));
+    if (sortKey === "wallet") return dir * ((a.walletBalance || 0) - (b.walletBalance || 0));
+    if (sortKey === "status") return dir * ((a.isBanned ? 2 : !a.isActive ? 1 : 0) - (b.isBanned ? 2 : !b.isActive ? 1 : 0));
+    return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+  });
+
   const allSelected = filtered.length > 0 && filtered.every((u: any) => selectedIds.has(u.id));
   const toggleAll = () => {
     if (allSelected) {
@@ -1756,13 +1806,16 @@ export default function Users() {
         iconBgClass="bg-blue-100"
         iconColorClass="text-blue-600"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportUsersCSV(filtered)} className="h-9 rounded-xl gap-2">
-              <Download className="w-4 h-4" /> Export CSV
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-            </Button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => exportUsersCSV(filtered)} className="h-9 rounded-xl gap-2">
+                <Download className="w-4 h-4" /> Export CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+                <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+              </Button>
+            </div>
+            <LastUpdated dataUpdatedAt={lastRefreshed} onRefresh={refetch} isRefreshing={isFetching} />
           </div>
         }
       />
@@ -2044,13 +2097,21 @@ export default function Users() {
                   <TableHead className="w-8 px-3">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4 rounded" />
                   </TableHead>
-                  <TableHead className="font-semibold text-[#1A56DB]/80">User</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80">
+                    <UserSortBtn label="User" col="name" sortKey={sortKey} sortDir={sortDir} onSort={handleUserSort} />
+                  </TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80">Phone</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80">Roles</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-center">KYC</TableHead>
-                  <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Wallet</TableHead>
-                  <TableHead className="font-semibold text-[#1A56DB]/80 text-center">Status</TableHead>
-                  <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Joined</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-right">
+                    <UserSortBtn label="Wallet" col="wallet" sortKey={sortKey} sortDir={sortDir} onSort={handleUserSort} />
+                  </TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-center">
+                    <UserSortBtn label="Status" col="status" sortKey={sortKey} sortDir={sortDir} onSort={handleUserSort} />
+                  </TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-right">
+                    <UserSortBtn label="Joined" col="joined" sortKey={sortKey} sortDir={sortDir} onSort={handleUserSort} />
+                  </TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -2078,7 +2139,7 @@ export default function Users() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((user: any) => {
+                  sortedUsers.map((user: any) => {
                     const userRoles = (user.roles || user.role || "customer").split(",").filter(Boolean);
                     const isBanned  = user.isBanned;
                     const isBlocked = !user.isActive && !isBanned;

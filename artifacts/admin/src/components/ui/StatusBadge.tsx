@@ -28,12 +28,18 @@ const STATUS_MAP: Record<string, { label: string; classes: string }> = {
   offline:      { label: "Offline",      classes: "bg-red-100 text-red-700 border-red-200" },
   expired:      { label: "Expired",      classes: "bg-red-100 text-red-700 border-red-200" },
 
-  assigned:     { label: "Assigned",     classes: "bg-blue-100 text-blue-700 border-blue-200" },
-  processing:   { label: "Processing",   classes: "bg-blue-100 text-blue-700 border-blue-200" },
-  picked_up:    { label: "Picked Up",    classes: "bg-blue-100 text-blue-700 border-blue-200" },
-  on_the_way:   { label: "On the Way",   classes: "bg-blue-100 text-blue-700 border-blue-200" },
-  dispatched:   { label: "Dispatched",   classes: "bg-blue-100 text-blue-700 border-blue-200" },
-  accepted:     { label: "Accepted",     classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  assigned:          { label: "Assigned",          classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  processing:        { label: "Processing",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  picked_up:         { label: "Picked Up",          classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  on_the_way:        { label: "On the Way",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  dispatched:        { label: "Dispatched",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  accepted:          { label: "Accepted",           classes: "bg-blue-100 text-blue-700 border-blue-200" },
+
+  resubmit:          { label: "Resubmit",           classes: "bg-orange-100 text-orange-700 border-orange-200" },
+  restricted:        { label: "Restricted",         classes: "bg-purple-100 text-purple-700 border-purple-200" },
+  pending_approval:  { label: "Pending Approval",   classes: "bg-amber-100 text-amber-700 border-amber-200" },
+  out_for_delivery:  { label: "Out for Delivery",   classes: "bg-sky-100 text-sky-700 border-sky-200" },
+  confirmed:         { label: "Confirmed",          classes: "bg-sky-100 text-sky-700 border-sky-200" },
 };
 
 function normalizeStatus(status: string): string {

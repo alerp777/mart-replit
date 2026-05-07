@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 import { WalletAdjustModal } from "@/components/WalletAdjustModal";
 
@@ -210,7 +212,7 @@ export default function Riders() {
   const [, navigate] = useLocation();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
-  const { data, isLoading, refetch, isFetching } = useRiders();
+  const { data, isLoading, refetch, isFetching, dataUpdatedAt } = useRiders();
   const toggleOnlineMutation = useToggleRiderOnline();
   const overrideSuspM = useOverrideSuspension("riders");
   const { toast } = useToast();
@@ -253,13 +255,13 @@ export default function Riders() {
   const pendingRiders  = riders.filter((r: any) => r.approvalStatus === "pending").length;
   const totalWallet    = riders.reduce((s: number, r: any) => s + r.walletBalance, 0);
 
-  const getStatusBadge = (r: any) => {
-    if (r.approvalStatus === "pending") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 text-[10px] gap-1"><Clock className="w-2.5 h-2.5" /> Pending Approval</Badge>;
-    if (r.isBanned)      return <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">Banned</Badge>;
-    if (r.isRestricted)  return <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-[10px]">Restricted</Badge>;
-    if (!r.isActive)     return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">Blocked</Badge>;
-    if (r.isOnline)      return <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] gap-1"><Circle className="w-2 h-2 fill-green-600 text-green-600" /> Online</Badge>;
-    return                      <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-[10px]">Offline</Badge>;
+  const getRiderStatus = (r: any): { status: string; label: string } => {
+    if (r.approvalStatus === "pending") return { status: "pending_approval", label: "Pending Approval" };
+    if (r.isBanned)     return { status: "banned",      label: "Banned" };
+    if (r.isRestricted) return { status: "restricted",  label: "Restricted" };
+    if (!r.isActive)    return { status: "blocked",     label: "Blocked" };
+    if (r.isOnline)     return { status: "online",      label: "Online" };
+    return                     { status: "offline",     label: "Offline" };
   };
 
   const approveM = useApproveUser();
@@ -299,13 +301,16 @@ export default function Riders() {
         iconBgClass="bg-green-100"
         iconColorClass="text-green-600"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportRidersCSV(filtered)} className="h-9 rounded-xl gap-2">
-              <Download className="w-4 h-4" /> CSV
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
-            </Button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => exportRidersCSV(filtered)} className="h-9 rounded-xl gap-2">
+                <Download className="w-4 h-4" /> CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+                <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
+              </Button>
+            </div>
+            <LastUpdated dataUpdatedAt={dataUpdatedAt} onRefresh={refetch} isRefreshing={isFetching} />
           </div>
         }
       />
@@ -375,7 +380,7 @@ export default function Riders() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-bold text-sm text-foreground">{r.name || "Unknown Rider"}</p>
-                        {getStatusBadge(r)}
+                        <StatusBadge {...getRiderStatus(r)} size="xs" />
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <a href={`tel:${r.phone}`} className="flex items-center gap-1 text-xs text-blue-600 font-medium hover:underline">

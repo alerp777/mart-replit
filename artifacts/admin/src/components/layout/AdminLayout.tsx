@@ -61,6 +61,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   useKeyboardShortcuts({
     onOpenSearch: () => { globalSearchRef.current?.focus(); },
     onCloseModal: () => { setIsMobileMenuOpen(false); setUserMenuOpen(false); setLangOpen(false); },
+    onNewItem: () => { window.dispatchEvent(new CustomEvent("admin:new-item")); },
   });
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
