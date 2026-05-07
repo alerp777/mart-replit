@@ -440,8 +440,8 @@ export default function Orders() {
         ) : !isError && orders.length === 0 ? (
           <div className={`${CARD} px-4 py-16 text-center`}>
             <p className="text-5xl mb-3">{TAB_KEYS.find(tb => tb.key === tab)?.icon}</p>
-            <p className="font-bold text-gray-700 text-base">{T("noNewOrders")}</p>
-            <p className="text-sm text-gray-400 mt-1">{T("theyAppearAutomatically")}</p>
+            <p className="font-bold text-gray-700 text-base">{T(tab === "cancelled" ? "noCancelledOrders" : "noNewOrders")}</p>
+            <p className="text-sm text-gray-400 mt-1">{T(tab === "cancelled" ? "cancelledOrdersAppear" : "theyAppearAutomatically")}</p>
           </div>
         ) : (
           <div className="md:grid md:grid-cols-2 md:gap-4 space-y-3 md:space-y-0">
