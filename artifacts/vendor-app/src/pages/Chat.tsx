@@ -245,7 +245,7 @@ function ShortcutsModal({ shortcuts, onSave, onClose }: { shortcuts: string[]; o
                                     </button>
                                     <button
                                       disabled={listFull}
-                                      onClick={() => { setList(prev => [...prev, item]); }}
+                                      onClick={() => { setList(prev => prev.includes(item) || prev.length >= MAX_SHORTCUTS ? prev : [...prev, item]); }}
                                       title={listFull ? "List is full" : "Add directly"}
                                       className="flex-shrink-0 w-7 h-7 rounded-lg bg-orange-500 text-white text-base font-bold flex items-center justify-center hover:bg-orange-600 disabled:opacity-30 disabled:cursor-not-allowed transition"
                                     >
