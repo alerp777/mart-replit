@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheck, Clock, XCircle, AlertCircle, CheckCircle,
   User, Phone, CreditCard, MapPin, Calendar, Eye,
   Filter, RefreshCw, X, ChevronDown, Search, Download,
   ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2,
-  Car, FileText,
+  Car, FileText, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/shared";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -475,7 +475,34 @@ export default function KycPage() {
     return () => window.removeEventListener("admin:close-modal", handler);
   }, []);
 
+  type KycSortKey = "userName" | "city" | "status" | "submittedAt";
+  const [kycSortKey, setKycSortKey] = useState<KycSortKey>("submittedAt");
+  const [kycSortDir, setKycSortDir] = useState<"asc" | "desc">("desc");
+
+  const handleKycSort = (key: KycSortKey) => {
+    if (kycSortKey === key) setKycSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setKycSortKey(key); setKycSortDir("asc"); }
+  };
+
+  function KycSortIcon({ col }: { col: KycSortKey }) {
+    if (kycSortKey !== col) return <ArrowUpDown className="w-3 h-3 opacity-40 inline ml-0.5" />;
+    return kycSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-blue-600 inline ml-0.5" /> : <ArrowDown className="w-3 h-3 text-blue-600 inline ml-0.5" />;
+  }
+
+  const statusOrder: Record<string, number> = { pending: 0, resubmit: 1, rejected: 2, approved: 3 };
+
   const records = data?.records ?? [];
+
+  const sortedRecords = useMemo(() => {
+    return [...records].sort((a, b) => {
+      const dir = kycSortDir === "asc" ? 1 : -1;
+      if (kycSortKey === "userName") return dir * ((a.userName ?? "").localeCompare(b.userName ?? ""));
+      if (kycSortKey === "city") return dir * ((a.city ?? "").localeCompare(b.city ?? ""));
+      if (kycSortKey === "status") return dir * ((statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9));
+      return dir * (new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+    });
+  }, [records, kycSortKey, kycSortDir]);
+
   const counts = {
     all: records.length,
     pending: records.filter(r => r.status === "pending").length,
@@ -574,13 +601,21 @@ export default function KycPage() {
           <div className="divide-y divide-gray-50">
             {/* Header */}
             <div className="grid grid-cols-12 gap-4 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              <div className="col-span-3">User</div>
+              <button onClick={() => handleKycSort("userName")} className="col-span-3 flex items-center gap-0.5 hover:text-blue-600 transition-colors text-left">
+                User<KycSortIcon col="userName" />
+              </button>
               <div className="col-span-3">CNIC / Name</div>
-              <div className="col-span-2">City</div>
-              <div className="col-span-2">Status</div>
-              <div className="col-span-2">Submitted</div>
+              <button onClick={() => handleKycSort("city")} className="col-span-2 flex items-center gap-0.5 hover:text-blue-600 transition-colors text-left">
+                City<KycSortIcon col="city" />
+              </button>
+              <button onClick={() => handleKycSort("status")} className="col-span-2 flex items-center gap-0.5 hover:text-blue-600 transition-colors text-left">
+                Status<KycSortIcon col="status" />
+              </button>
+              <button onClick={() => handleKycSort("submittedAt")} className="col-span-2 flex items-center gap-0.5 hover:text-blue-600 transition-colors text-left">
+                Submitted<KycSortIcon col="submittedAt" />
+              </button>
             </div>
-            {records.map(rec => {
+            {sortedRecords.map(rec => {
               const stConf = STATUS_CONFIG[rec.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending;
               const StIcon = stConf.Icon;
               return (

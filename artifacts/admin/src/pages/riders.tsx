@@ -1,10 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bike, Search, RefreshCw, Wallet, CircleDollarSign, Gift, Circle,
   CheckCircle2, Ban, AlertTriangle, Star, Phone, Download, CalendarDays,
   WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward, Gavel, Clock,
+  ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { PageHeader, StatCard, FilterBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
@@ -235,6 +236,20 @@ export default function Riders() {
     });
   };
 
+  type RiderSortKey = "name" | "status" | "walletBalance" | "avgRating";
+  const [sortKey, setSortKey] = useState<RiderSortKey>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (key: RiderSortKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  function SortIcon({ col }: { col: RiderSortKey }) {
+    if (sortKey !== col) return <ArrowUpDown className="w-3 h-3 opacity-40 inline ml-0.5" />;
+    return sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-primary inline ml-0.5" /> : <ArrowDown className="w-3 h-3 text-primary inline ml-0.5" />;
+  }
+
   const filtered = riders.filter((r: any) => {
     const q = search.toLowerCase();
     const matchSearch = (r.name || "").toLowerCase().includes(q) || (r.phone || "").includes(q);
@@ -249,6 +264,25 @@ export default function Riders() {
                    && (!dateTo   || new Date(r.createdAt) <= new Date(dateTo + "T23:59:59"));
     return matchSearch && matchStatus && matchDate;
   });
+
+  const statusRank = (r: any) => {
+    if (r.isBanned) return 4;
+    if (!r.isActive) return 3;
+    if (r.approvalStatus === "pending") return 2;
+    if (!r.isOnline) return 1;
+    return 0;
+  };
+
+  const sortedFiltered = useMemo(() => {
+    return [...filtered].sort((a: any, b: any) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      if (sortKey === "name") return dir * ((a.name || "").localeCompare(b.name || ""));
+      if (sortKey === "status") return dir * (statusRank(a) - statusRank(b));
+      if (sortKey === "walletBalance") return dir * (Number(a.walletBalance) - Number(b.walletBalance));
+      if (sortKey === "avgRating") return dir * (Number(a.avgRating || 0) - Number(b.avgRating || 0));
+      return 0;
+    });
+  }, [filtered, sortKey, sortDir]);
 
   const onlineRiders   = riders.filter((r: any) => r.isOnline && r.isActive).length;
   const activeRiders   = riders.filter((r: any) => r.isActive && !r.isBanned).length;
@@ -345,12 +379,29 @@ export default function Riders() {
             </Select>
           }
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
           <span className="text-xs text-muted-foreground">–</span>
           <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
           {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">Clear</button>}
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-muted-foreground font-medium mr-1">Sort:</span>
+          {([
+            { key: "name" as const,          label: "Name" },
+            { key: "status" as const,        label: "Status" },
+            { key: "walletBalance" as const, label: "Wallet" },
+            { key: "avgRating" as const,     label: "Rating" },
+          ] as const).map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => handleSort(opt.key)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${sortKey === opt.key ? "bg-primary text-primary-foreground border-primary" : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/40"}`}
+            >
+              {opt.label}<SortIcon col={opt.key} />
+            </button>
+          ))}
         </div>
       </Card>
 
@@ -359,16 +410,16 @@ export default function Riders() {
         <div className="space-y-3">
           {[1,2,3].map(i => <div key={i} className="h-20 bg-muted animate-pulse rounded-2xl" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : sortedFiltered.length === 0 ? (
         <Card className="rounded-2xl border-border/50">
           <CardContent className="p-12 text-center">
             <Bike className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="text-muted-foreground font-medium">No riders found</p>
+            <p className="text-muted-foreground font-medium">No riders match the current filters</p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {filtered.map((r: any) => (
+          {sortedFiltered.map((r: any) => (
             <Card key={r.id} className="rounded-2xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { PageHeader } from "@/components/shared";
 import {
   ArrowDownToLine, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock,
-  Wallet, AlertTriangle, PartyPopper, Inbox, Download,
+  Wallet, AlertTriangle, PartyPopper, Inbox, Download, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { useDepositRequests, useApproveDeposit, useRejectDeposit, useBulkApproveDeposits, useBulkRejectDeposits } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
@@ -342,7 +342,31 @@ export default function DepositRequests() {
     return dups;
   }, [deposits]);
 
-  const filtered      = statusFilter === "all" ? deposits : deposits.filter(d => d.status === statusFilter);
+  type DepSortKey = "amount" | "createdAt" | "status";
+  const [depSortKey, setDepSortKey] = useState<DepSortKey>("createdAt");
+  const [depSortDir, setDepSortDir] = useState<"asc" | "desc">("desc");
+
+  const handleDepSort = (key: DepSortKey) => {
+    if (depSortKey === key) setDepSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setDepSortKey(key); setDepSortDir("asc"); }
+  };
+
+  function DepSortIcon({ col }: { col: DepSortKey }) {
+    if (depSortKey !== col) return <ArrowUpDown className="w-3 h-3 opacity-40 inline ml-0.5" />;
+    return depSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-primary inline ml-0.5" /> : <ArrowDown className="w-3 h-3 text-primary inline ml-0.5" />;
+  }
+
+  const depStatusOrder: Record<string, number> = { pending: 0, approved: 1, rejected: 2 };
+
+  const rawFiltered = statusFilter === "all" ? deposits : deposits.filter(d => d.status === statusFilter);
+  const filtered = useMemo(() => {
+    return [...rawFiltered].sort((a, b) => {
+      const dir = depSortDir === "asc" ? 1 : -1;
+      if (depSortKey === "amount") return dir * (Number(a.amount) - Number(b.amount));
+      if (depSortKey === "status") return dir * ((depStatusOrder[a.status] ?? 9) - (depStatusOrder[b.status] ?? 9));
+      return dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    });
+  }, [rawFiltered, depSortKey, depSortDir]);
   const pendingCount  = deposits.filter(d => d.status === "pending").length;
   const pendingAmt    = deposits.filter(d => d.status === "pending").reduce((s: number, d: Deposit) => s + Number(d.amount), 0);
   const approvedCount = deposits.filter(d => d.status === "approved").length;
@@ -445,6 +469,24 @@ export default function DepositRequests() {
               <p className="text-xs text-gray-500 mt-0.5">{c.label}</p>
             </CardContent>
           </Card>
+        ))}
+      </div>
+
+      {/* Sort Controls */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-xs text-muted-foreground font-medium mr-1">Sort:</span>
+        {([
+          { key: "createdAt" as const, label: "Date" },
+          { key: "amount" as const,    label: "Amount" },
+          { key: "status" as const,    label: "Status" },
+        ] as const).map(opt => (
+          <button
+            key={opt.key}
+            onClick={() => handleDepSort(opt.key)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${depSortKey === opt.key ? "bg-primary text-primary-foreground border-primary" : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/40"}`}
+          >
+            {opt.label}<DepSortIcon col={opt.key} />
+          </button>
         ))}
       </div>
 

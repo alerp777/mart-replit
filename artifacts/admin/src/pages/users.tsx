@@ -25,6 +25,7 @@ import { SafeImage } from "@/components/ui/SafeImage";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -2057,8 +2058,8 @@ export default function Users() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-foreground truncate">{user.name || user.phone}</p>
-                      {isBanned && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200 px-1">BANNED</Badge>}
-                      {isBlocked && <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-600 border-amber-200 px-1">BLOCKED</Badge>}
+                      {isBanned && <StatusBadge status="banned" size="xs" />}
+                      {isBlocked && <StatusBadge status="blocked" size="xs" />}
                     </div>
                     <p className="text-xs text-muted-foreground font-mono mt-0.5">{user.phone}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -2164,8 +2165,8 @@ export default function Users() {
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <p className="font-semibold text-foreground truncate">{user.name || user.phone}</p>
-                                {isBanned && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200 px-1">BANNED</Badge>}
-                                {isBlocked && <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-600 border-amber-200 px-1">BLOCKED</Badge>}
+                                {isBanned && <StatusBadge status="banned" size="xs" />}
+                                {isBlocked && <StatusBadge status="blocked" size="xs" />}
                                 {(user.blockedServices || "").split(",").map((s: string) => s.trim()).includes("wallet") && <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-600 border-amber-200 px-1">🔒 Wallet</Badge>}
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
@@ -2212,7 +2213,7 @@ export default function Users() {
                         <TableCell className="text-center">
                           <div className="flex flex-col items-center gap-1">
                             {isBanned ? (
-                              <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">Banned</Badge>
+                              <StatusBadge status="banned" size="xs" />
                             ) : (
                               <div className="flex items-center justify-center gap-2">
                                 <Switch checked={user.isActive} onCheckedChange={(val) => {

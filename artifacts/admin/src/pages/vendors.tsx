@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { WalletAdjustModal } from "@/components/WalletAdjustModal";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 import { useHasPermission } from "@/hooks/usePermissions";
 
 /* ── Suspend Modal ── */
@@ -150,7 +151,7 @@ export default function Vendors() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const [, setLocation] = useLocation();
-  const { data, isLoading, refetch, isFetching } = useVendors();
+  const { data, isLoading, refetch, isFetching, dataUpdatedAt } = useVendors();
   const { data: settingsData } = usePlatformSettings();
   const overrideSuspM = useOverrideSuspension("vendors");
   const { data: daData } = useDeliveryAccess();
@@ -235,20 +236,23 @@ export default function Vendors() {
         iconBgClass="bg-orange-100"
         iconColorClass="text-orange-600"
         actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportVendorsCSV(filtered)} className="h-9 rounded-xl gap-2">
-              <Download className="w-4 h-4" /> CSV
-            </Button>
-            <button
-              onClick={() => setLocation("/settings?cat=vendor")}
-              className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              Vendor Config
-            </button>
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
-            </Button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => exportVendorsCSV(filtered)} className="h-9 rounded-xl gap-2">
+                <Download className="w-4 h-4" /> CSV
+              </Button>
+              <button
+                onClick={() => setLocation("/settings?cat=vendor")}
+                className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                Vendor Config
+              </button>
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+                <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
+              </Button>
+            </div>
+            <LastUpdated dataUpdatedAt={dataUpdatedAt} onRefresh={refetch} isRefreshing={isFetching} />
           </div>
         }
       />

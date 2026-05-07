@@ -35,6 +35,9 @@ const STATUS_MAP: Record<string, { label: string; classes: string }> = {
   dispatched:        { label: "Dispatched",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
   accepted:          { label: "Accepted",           classes: "bg-blue-100 text-blue-700 border-blue-200" },
 
+  credit:            { label: "Credit",             classes: "bg-green-100 text-green-700 border-green-200" },
+  debit:             { label: "Debit",              classes: "bg-red-100 text-red-700 border-red-200" },
+
   resubmit:          { label: "Resubmit",           classes: "bg-orange-100 text-orange-700 border-orange-200" },
   restricted:        { label: "Restricted",         classes: "bg-purple-100 text-purple-700 border-purple-200" },
   pending_approval:  { label: "Pending Approval",   classes: "bg-amber-100 text-amber-700 border-amber-200" },

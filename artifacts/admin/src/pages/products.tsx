@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { PageHeader } from "@/components/shared";
 import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter, CheckCircle, XCircle, Clock, Upload, X, ImageIcon } from "lucide-react";
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, usePendingProducts, useApproveProduct, useRejectProduct, useCategories } from "@/hooks/use-admin";
@@ -18,6 +18,7 @@ import type { ProductRow } from "@/lib/adminApiTypes";
 import { useHasPermission } from "@/hooks/usePermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SafeImage } from "@/components/ui/SafeImage";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 const errMsg = (e: unknown): string =>
   e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown error";
@@ -72,7 +73,7 @@ function RejectModal({ product, onClose }: { product: ProductRow; onClose: () =>
 export default function Products() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
-  const { data, isLoading } = useProducts();
+  const { data, isLoading, dataUpdatedAt } = useProducts();
   const { data: pendingData, isLoading: pendingLoading } = usePendingProducts();
   const { data: categoriesData } = useCategories();
   const createMutation = useCreateProduct();
@@ -252,13 +253,16 @@ export default function Products() {
         iconBgClass="bg-purple-100"
         iconColorClass="text-purple-600"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={exportCSV} className="h-11 rounded-xl gap-2">
-              <Download className="w-4 h-4" /> CSV
-            </Button>
-            <Button onClick={openAdd} className="h-11 rounded-xl shadow-md gap-2">
-              <Plus className="w-5 h-5" /> Add Product
-            </Button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={exportCSV} className="h-11 rounded-xl gap-2">
+                <Download className="w-4 h-4" /> CSV
+              </Button>
+              <Button onClick={openAdd} className="h-11 rounded-xl shadow-md gap-2">
+                <Plus className="w-5 h-5" /> Add Product
+              </Button>
+            </div>
+            <LastUpdated dataUpdatedAt={dataUpdatedAt ?? 0} />
           </div>
         }
       />

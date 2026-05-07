@@ -3,6 +3,7 @@ import { useTransactions } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -231,14 +232,12 @@ export default function Transactions() {
                 </div>
                 <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Badge
-                      variant="outline"
-                      className={t.type === 'credit'
-                        ? 'bg-green-50 text-green-700 border-green-200 uppercase text-[10px] font-bold shrink-0'
-                        : 'bg-red-50 text-red-700 border-red-200 uppercase text-[10px] font-bold shrink-0'}
-                    >
-                      {t.type === 'credit' ? T("creditLabel") : T("debitLabel")}
-                    </Badge>
+                    <StatusBadge
+                      status={t.type}
+                      label={t.type === 'credit' ? `▲ ${T("creditLabel")}` : `▼ ${T("debitLabel")}`}
+                      size="xs"
+                      className="uppercase font-bold shrink-0"
+                    />
                     <p className="text-xs text-muted-foreground truncate">{t.description}</p>
                   </div>
                   <p className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{formatDate(t.createdAt)}</p>
@@ -291,15 +290,12 @@ export default function Transactions() {
                     </TableCell>
                     <TableCell className="font-medium max-w-[200px] truncate text-sm">{t.description}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={t.type === 'credit'
-                          ? 'bg-green-50 text-green-700 border-green-200 uppercase text-[10px] font-bold'
-                          : 'bg-red-50 text-red-700 border-red-200 uppercase text-[10px] font-bold'
-                        }
-                      >
-                        {t.type === 'credit' ? `▲ ${T("creditLabel")}` : `▼ ${T("debitLabel")}`}
-                      </Badge>
+                      <StatusBadge
+                        status={t.type}
+                        label={t.type === 'credit' ? `▲ ${T("creditLabel")}` : `▼ ${T("debitLabel")}`}
+                        size="xs"
+                        className="uppercase font-bold"
+                      />
                     </TableCell>
                     <TableCell className={`text-right font-bold ${t.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
                       {t.type === 'credit' ? '+' : '-'}{formatCurrency(t.amount)}
