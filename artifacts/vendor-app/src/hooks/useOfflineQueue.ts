@@ -183,6 +183,14 @@ export function useOfflineQueue() {
   }, [qc]);
 
   useEffect(() => {
+    if (navigator.onLine) {
+      flushQueue();
+      flushProductQueue();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const onOnline = () => {
       setIsOnline(true);
       flushQueue();

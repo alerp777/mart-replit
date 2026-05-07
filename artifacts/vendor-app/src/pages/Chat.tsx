@@ -456,7 +456,8 @@ export default function Chat() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       localStreamRef.current = stream;
 
-      const pc = new RTCPeerConnection({ iceServers: [...(data.iceServers ?? []), ...getTurnIceServers()] });
+      const apiIceServers: RTCIceServer[] = data.iceServers?.length ? data.iceServers : [{ urls: "stun:stun.l.google.com:19302" }];
+      const pc = new RTCPeerConnection({ iceServers: [...apiIceServers, ...getTurnIceServers()] });
       pcRef.current = pc;
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
