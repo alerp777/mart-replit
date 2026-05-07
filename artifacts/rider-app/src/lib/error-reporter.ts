@@ -96,7 +96,6 @@ async function sendReport(report: Record<string, unknown>): Promise<void> {
     if (!_warnedNoSecret) {
       _warnedNoSecret = true;
       if (import.meta.env.DEV) {
-        /* eslint-disable-next-line no-console */
         console.warn("[ErrorReporter] VITE_ERROR_REPORT_HMAC_SECRET is not set — error reports will NOT be sent.");
       }
     }

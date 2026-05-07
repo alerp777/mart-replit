@@ -9,10 +9,7 @@ import { checkApiHealth } from "./lib/checkApiHealth";
 if (import.meta.env.DEV) {
   const apiTarget = import.meta.env.VITE_API_PROXY_TARGET || import.meta.env.VITE_API_BASE_URL;
   if (!apiTarget) {
-    console.group("%c⚠️ AJKMart Rider — ENV NOT CONFIGURED", "color:#f59e0b;font-weight:bold;font-size:13px");
-    console.warn("VITE_API_PROXY_TARGET is not set. API proxy may point to wrong host.");
-    console.info("Fix: add VITE_API_PROXY_TARGET as a Replit Secret or in your .env file, then restart.");
-    console.groupEnd();
+    console.warn("[AJKMart Rider] VITE_API_PROXY_TARGET is not set — API proxy may point to wrong host. Fix: add VITE_API_PROXY_TARGET as a Replit Secret or in your .env file, then restart.");
   }
 }
 

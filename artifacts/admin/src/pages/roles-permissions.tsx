@@ -344,7 +344,7 @@ export default function RolesPermissionsPage() {
     }
   };
 
-  useEffect(() => { if (tab === "admins" && !admins.length) void loadAdmins(); /* eslint-disable-next-line */ }, [tab]);
+  useEffect(() => { if (tab === "admins" && !admins.length) void loadAdmins(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tab]);
 
   const selectAdmin = async (a: AdminAccount) => {
     setActiveAdminId(a.id);

@@ -81,11 +81,9 @@ export function auditAdminEnv(): EnvAuditResult {
 
   /* ── Single grouped warning ─────────────────────────────────────── */
   if (warnings.length > 0) {
-    console.groupCollapsed(
-      `[envValidation] ${warnings.length} environment issue(s) detected`,
-    );
-    for (const w of warnings) console.warn(w);
-    console.groupEnd();
+    for (const w of warnings) {
+      console.warn(`[envValidation] ${w}`);
+    }
   }
 
   return { baseUrl, mode, warnings };

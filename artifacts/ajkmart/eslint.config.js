@@ -22,7 +22,7 @@ module.exports = defineConfig([
       // Prevent console.log/debug/info leaking into production builds.
       // console.error and console.warn are allowed for legitimate error reporting.
       // The Expo production build also strips consoles via babel-plugin-transform-remove-console.
-      "no-console": ["error", { allow: ["error", "warn", "info", "group", "groupCollapsed", "groupEnd"] }],
+      "no-console": ["error", { allow: ["error", "warn"] }],
 
       // React Native does not render to the DOM, so HTML entity escaping
       // (`'` -> `&apos;`, etc.) adds no value and only fights against natural
