@@ -2837,6 +2837,9 @@ router.get("/system/health-dashboard", async (_req, res) => {
   const s = await getPlatformSettings();
   const now = new Date();
 
+  /* ── Performance metrics (parallel with other checks) ── */
+  const { getP95Ms, getMemoryPct, getDiskPct, getDiskFreeGb } = await import("../../lib/metrics/responseTime.js");
+
   /* ── Server health ── */
   const uptimeSec = Math.floor(process.uptime());
   let dbStatus: "ok" | "error" = "ok";
@@ -2908,6 +2911,28 @@ router.get("/system/health-dashboard", async (_req, res) => {
   };
   const maintenanceMode = (s["app_status"] ?? "active") === "maintenance";
 
+  /* ── Performance metrics ── */
+  const p95Ms    = getP95Ms();
+  const memoryPct = getMemoryPct();
+  const diskPct   = getDiskPct();
+  const diskFreeGb = getDiskFreeGb();
+
+  let dbQueryMs: number | null = null;
+  if (dbStatus === "ok") {
+    try {
+      const t0 = Date.now();
+      await db.select({ c: count() }).from(platformSettingsTable);
+      dbQueryMs = Date.now() - t0;
+    } catch {
+      dbQueryMs = null;
+    }
+  }
+
+  const thresholdP95Ms   = Math.max(1, parseInt(s["perf_alert_p95_ms"]      ?? "500",  10));
+  const thresholdDbMs    = Math.max(1, parseInt(s["perf_alert_db_query_ms"] ?? "1000", 10));
+  const thresholdMemPct  = Math.max(1, parseInt(s["perf_alert_memory_pct"]  ?? "80",   10));
+  const thresholdDiskPct = Math.max(1, parseInt(s["perf_alert_disk_pct"]    ?? "80",   10));
+
   /* ── Issue detection ── */
   const issues: { level: "error" | "warning" | "info"; message: string }[] = [];
   if (dbStatus === "error")
@@ -2924,6 +2949,16 @@ router.get("/system/health-dashboard", async (_req, res) => {
     issues.push({ level: "warning", message: "SOS alerts feature is disabled — riders/customers cannot send emergency alerts" });
   if (staleRiders > 0)
     issues.push({ level: "info", message: `${staleRiders} rider(s) in the live table have not pinged in the last 5 minutes` });
+
+  /* ── Performance issues ── */
+  if (p95Ms !== null && p95Ms > thresholdP95Ms)
+    issues.push({ level: "error", message: `API p95 response time is ${p95Ms}ms — exceeds threshold of ${thresholdP95Ms}ms` });
+  if (dbQueryMs !== null && dbQueryMs > thresholdDbMs)
+    issues.push({ level: "error", message: `DB query latency is ${dbQueryMs}ms — exceeds threshold of ${thresholdDbMs}ms` });
+  if (memoryPct > thresholdMemPct)
+    issues.push({ level: "error", message: `Heap memory usage is ${memoryPct}% — exceeds threshold of ${thresholdMemPct}%` });
+  if (diskPct !== null && diskPct > thresholdDiskPct)
+    issues.push({ level: "error", message: `Disk usage is ${diskPct}% — exceeds threshold of ${thresholdDiskPct}%` });
 
   /* ── Auth lockout monitoring ── */
   const nowMs = Date.now();
@@ -2966,6 +3001,19 @@ router.get("/system/health-dashboard", async (_req, res) => {
       db: dbStatus,
       memoryMb,
       nodeVersion: process.version,
+    },
+    performance: {
+      p95Ms,
+      dbQueryMs,
+      memoryPct,
+      diskPct,
+      diskFreeGb,
+      thresholds: {
+        p95Ms:    thresholdP95Ms,
+        dbMs:     thresholdDbMs,
+        memoryPct: thresholdMemPct,
+        diskPct:   thresholdDiskPct,
+      },
     },
     gps: {
       ridersInLiveTable,

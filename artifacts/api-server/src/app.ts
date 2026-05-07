@@ -25,6 +25,7 @@ import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.se
 import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
 import { ensureErrorResolutionTables } from "./routes/error-reports.js";
 import { startHealthMonitor } from "./services/healthAlertMonitor.js";
+import { recordResponseTime } from "./lib/metrics/responseTime.js";
 import router from "./routes/index.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 
@@ -180,6 +181,21 @@ export function createServer() {
       }),
     },
   }));
+
+  /* ── Response-time collection for p95 metrics ───────────────────────────
+     Hooks into the response `finish` event (after headers are flushed) to
+     record each request's duration into the rolling window used by the
+     health monitor and /api/health endpoint. Skips health/proxy endpoints
+     so they don't skew the application p95. */
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on("finish", () => {
+      const url = req.originalUrl ?? req.url ?? "";
+      if (url.startsWith("/api/health") || url === "/" || url.startsWith("/admin") || url.startsWith("/vendor") || url.startsWith("/rider")) return;
+      recordResponseTime(Date.now() - start);
+    });
+    next();
+  });
 
   /* ── Sentry request handler (official pattern) ─────────────────────────────
      When @sentry/node is installed and initialised (see index.ts IIFE),

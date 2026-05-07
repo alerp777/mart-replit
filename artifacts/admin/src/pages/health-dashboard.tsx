@@ -7,6 +7,7 @@ import {
   Navigation, Eye, EyeOff, MessageSquare, Zap,
   Bell, BellOff, Mail, Slack,
   Lock, LockOpen, UserX, Shield, Timer, Loader2,
+  Gauge, Database, HardDrive, MemoryStick,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { Card, CardContent } from "@/components/ui/card";
@@ -403,6 +404,9 @@ export default function HealthDashboard() {
         </Section>
       </div>
 
+      {/* ── Performance Metrics ── */}
+      <PerformanceSection data={d} isLoading={isLoading} />
+
       {/* ── Alert Notifications ── */}
       <Section title="Alert Notifications" icon={Bell}>
         {isLoading ? (
@@ -500,6 +504,170 @@ export default function HealthDashboard() {
         Auto-refreshes every 30 seconds · Last updated {dataUpdatedAt > 0 ? updatedAgo(new Date(dataUpdatedAt).toISOString()) : "—"}
       </p>
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Performance Metrics sub-component
+───────────────────────────────────────────────────────────────────────────── */
+function PerfMetricBar({ value, threshold, label, unit = "%" }: {
+  value: number | null;
+  threshold: number;
+  label: string;
+  unit?: string;
+}) {
+  if (value === null) {
+    return (
+      <div className="flex items-center justify-between py-2.5 border-b border-slate-700/40 last:border-0">
+        <span className="text-sm text-slate-400">{label}</span>
+        <span className="text-xs text-slate-600 italic">No data yet</span>
+      </div>
+    );
+  }
+
+  const pct = unit === "%" ? value : Math.min(100, (value / threshold) * 100);
+  const color =
+    value >= threshold ? "bg-red-500" :
+    value >= threshold * 0.8 ? "bg-amber-500" :
+    "bg-emerald-500";
+  const textColor =
+    value >= threshold ? "text-red-400" :
+    value >= threshold * 0.8 ? "text-amber-400" :
+    "text-emerald-400";
+  const statusIcon =
+    value >= threshold ? "🔴" :
+    value >= threshold * 0.8 ? "🟡" :
+    "🟢";
+
+  return (
+    <div className="py-2.5 border-b border-slate-700/40 last:border-0">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-sm text-slate-400">{label}</span>
+        <span className={`text-sm font-medium ${textColor} flex items-center gap-1.5`}>
+          <span className="text-xs">{statusIcon}</span>
+          {value}{unit}
+          <span className="text-xs text-slate-600 font-normal">/ {threshold}{unit} limit</span>
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-slate-700/60 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PerformanceSection({ data: d, isLoading }: { data: any; isLoading: boolean }) {
+  const perf = d?.performance;
+
+  const p95Ms     = perf?.p95Ms     ?? null;
+  const dbQueryMs = perf?.dbQueryMs ?? null;
+  const memoryPct = perf?.memoryPct ?? null;
+  const diskPct   = perf?.diskPct   ?? null;
+  const diskFreeGb = perf?.diskFreeGb ?? null;
+
+  const thresholds = perf?.thresholds ?? { p95Ms: 500, dbMs: 1000, memoryPct: 80, diskPct: 80 };
+
+  const alertCount = [
+    p95Ms !== null && p95Ms >= thresholds.p95Ms,
+    dbQueryMs !== null && dbQueryMs >= thresholds.dbMs,
+    memoryPct !== null && memoryPct >= thresholds.memoryPct,
+    diskPct !== null && diskPct >= thresholds.diskPct,
+  ].filter(Boolean).length;
+
+  return (
+    <Section title="Performance" icon={Gauge}>
+      {isLoading ? (
+        <div className="space-y-3">
+          {[...Array(4)].map((_, i) => <SkeletonBlock key={i} className="h-12" />)}
+        </div>
+      ) : (
+        <div>
+          {alertCount > 0 && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2">
+              <AlertTriangle size={13} className="text-red-400 shrink-0" />
+              <span className="text-xs text-red-300">
+                {alertCount} metric{alertCount > 1 ? "s" : ""} exceeding alert threshold{alertCount > 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {/* API response time */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Gauge size={13} className="text-slate-500" />
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">API Response (p95)</span>
+              </div>
+              <PerfMetricBar
+                value={p95Ms}
+                threshold={thresholds.p95Ms}
+                label="p95 response time"
+                unit="ms"
+              />
+              {p95Ms === null && (
+                <p className="text-xs text-slate-600 mt-1.5">Collecting samples — requires at least 10 API requests</p>
+              )}
+            </div>
+
+            {/* DB query latency */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Database size={13} className="text-slate-500" />
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">DB Query Latency</span>
+              </div>
+              <PerfMetricBar
+                value={dbQueryMs}
+                threshold={thresholds.dbMs}
+                label="Query latency"
+                unit="ms"
+              />
+            </div>
+
+            {/* Memory usage */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <MemoryStick size={13} className="text-slate-500" />
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Heap Memory</span>
+              </div>
+              <PerfMetricBar
+                value={memoryPct}
+                threshold={thresholds.memoryPct}
+                label="Heap used"
+                unit="%"
+              />
+            </div>
+
+            {/* Disk usage */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <HardDrive size={13} className="text-slate-500" />
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Disk Usage</span>
+              </div>
+              <PerfMetricBar
+                value={diskPct}
+                threshold={thresholds.diskPct}
+                label="Disk used"
+                unit="%"
+              />
+              {diskFreeGb !== null && (
+                <p className="text-xs text-slate-600 mt-1">{diskFreeGb} GB free</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-700/40">
+            <p className="text-xs text-slate-600">
+              Thresholds: p95 &lt; {thresholds.p95Ms}ms · DB &lt; {thresholds.dbMs}ms · Memory &lt; {thresholds.memoryPct}% · Disk &lt; {thresholds.diskPct}%
+              {" · "}
+              <span className="text-slate-700">Configure via Admin Settings → <code className="bg-slate-800 px-1 rounded">perf_alert_*</code> keys</span>
+            </p>
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 

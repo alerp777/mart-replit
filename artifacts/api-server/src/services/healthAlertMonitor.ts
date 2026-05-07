@@ -1,8 +1,9 @@
 import { db } from "@workspace/db";
-import { liveLocationsTable } from "@workspace/db/schema";
+import { liveLocationsTable, platformSettingsTable } from "@workspace/db/schema";
 import { count, eq, and, gte, sql } from "drizzle-orm";
 import { getCachedSettings } from "../routes/admin-shared.js";
 import { sendAdminAlert } from "./email.js";
+import { getP95Ms, getMemoryPct, getDiskPct } from "../lib/metrics/responseTime.js";
 
 /* ══════════════════════════════════════════════════════════════════════════
    healthAlertMonitor.ts
@@ -119,6 +120,64 @@ async function runHealthChecks(): Promise<HealthIssue[]> {
   return issues;
 }
 
+/* ── Performance metrics check ────────────────────────────────────────────── */
+async function checkPerformanceMetrics(s: Record<string, string>): Promise<HealthIssue[]> {
+  const issues: HealthIssue[] = [];
+
+  const thresholdP95Ms    = Math.max(1, parseInt(s["perf_alert_p95_ms"]      ?? "500",  10));
+  const thresholdDbMs     = Math.max(1, parseInt(s["perf_alert_db_query_ms"] ?? "1000", 10));
+  const thresholdMemPct   = Math.max(1, parseInt(s["perf_alert_memory_pct"]  ?? "80",   10));
+  const thresholdDiskPct  = Math.max(1, parseInt(s["perf_alert_disk_pct"]    ?? "80",   10));
+
+  /* ── p95 response time ── */
+  const p95 = getP95Ms();
+  if (p95 !== null && p95 > thresholdP95Ms) {
+    issues.push({
+      key:     "perf_p95_high",
+      level:   "error",
+      message: `API p95 response time is ${p95}ms — exceeds threshold of ${thresholdP95Ms}ms`,
+    });
+  }
+
+  /* ── DB query latency probe ── */
+  try {
+    const t0 = Date.now();
+    await db.select({ c: count() }).from(platformSettingsTable);
+    const dbMs = Date.now() - t0;
+    if (dbMs > thresholdDbMs) {
+      issues.push({
+        key:     "perf_db_slow",
+        level:   "error",
+        message: `DB query latency is ${dbMs}ms — exceeds threshold of ${thresholdDbMs}ms`,
+      });
+    }
+  } catch {
+    /* DB connectivity failures are already caught in the main health check */
+  }
+
+  /* ── Memory usage ── */
+  const memPct = getMemoryPct();
+  if (memPct > thresholdMemPct) {
+    issues.push({
+      key:     "perf_memory_high",
+      level:   "error",
+      message: `Heap memory usage is ${memPct}% — exceeds threshold of ${thresholdMemPct}%`,
+    });
+  }
+
+  /* ── Disk usage ── */
+  const diskPct = getDiskPct();
+  if (diskPct !== null && diskPct > thresholdDiskPct) {
+    issues.push({
+      key:     "perf_disk_high",
+      level:   "error",
+      message: `Disk usage is ${diskPct}% — exceeds threshold of ${thresholdDiskPct}%`,
+    });
+  }
+
+  return issues;
+}
+
 async function sendSlackAlert(
   webhookUrl: string,
   issues: HealthIssue[],
@@ -186,7 +245,11 @@ async function runMonitorCycle(): Promise<void> {
     const appName = s["app_name"] ?? "AJKMart";
     const slackWebhook = s["health_alert_slack_webhook"]?.trim() ?? "";
 
-    const allIssues = await runHealthChecks();
+    const [baseIssues, perfIssues] = await Promise.all([
+      runHealthChecks(),
+      checkPerformanceMetrics(s),
+    ]);
+    const allIssues = [...baseIssues, ...perfIssues];
 
     /* Only send alerts for error-level issues (warnings shown on dashboard only) */
     const alertableIssues = allIssues.filter((i) => i.level === "error");

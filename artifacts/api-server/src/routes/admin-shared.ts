@@ -352,6 +352,12 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultPlatformSetting[] = [
   { key: "system_json_body_limit",    value: "10mb",   label: "JSON Body Size Limit",       category: "system_limits" },
   { key: "system_upload_size_limit",  value: "10mb",   label: "Upload Size Limit",          category: "system_limits" },
 
+  /* ── PERFORMANCE ALERT THRESHOLDS ────────────────────────────────────── */
+  { key: "perf_alert_p95_ms",      value: "500",  label: "API p95 Alert Threshold (ms)",      category: "health_monitor" },
+  { key: "perf_alert_db_query_ms", value: "1000", label: "DB Query Latency Alert (ms)",        category: "health_monitor" },
+  { key: "perf_alert_memory_pct",  value: "80",   label: "Memory Usage Alert Threshold (%)",   category: "health_monitor" },
+  { key: "perf_alert_disk_pct",    value: "80",   label: "Disk Usage Alert Threshold (%)",     category: "health_monitor" },
+
   /* ── CACHE TTLS ──────────────────────────────────────────────────────── */
   { key: "cache_settings_ttl_sec", value: "30",  label: "Settings Cache TTL (sec)",   category: "cache" },
   { key: "cache_vpn_ttl_min",      value: "60",  label: "VPN Detection Cache (min)",  category: "cache" },

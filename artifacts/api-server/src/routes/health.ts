@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { sql, count } from "drizzle-orm";
+import { platformSettingsTable } from "@workspace/db/schema";
 import { adminAuth } from "./admin-shared.js";
 import { checkSchemaDrift } from "../services/schemaDrift.service.js";
 import { redisClient } from "../lib/redis.js";
+import { getP95Ms, getMemoryPct, getDiskPct } from "../lib/metrics/responseTime.js";
 
 const router = Router();
 
@@ -56,6 +58,21 @@ router.get("/", async (_req, res) => {
 
   const httpStatus = (db2 === "error" || redis2 === "error") ? 503 : 200;
 
+  /* ── Performance metrics ── */
+  let dbQueryMs: number | null = null;
+  if (db2 === "ok") {
+    try {
+      const t0 = Date.now();
+      await db.select({ c: count() }).from(platformSettingsTable);
+      dbQueryMs = Date.now() - t0;
+    } catch {
+      dbQueryMs = null;
+    }
+  }
+  const p95Ms    = getP95Ms();
+  const memoryPct = getMemoryPct();
+  const diskPct   = getDiskPct();
+
   res.status(httpStatus).json({
     status: overallStatus,
     db: db2,
@@ -63,6 +80,10 @@ router.get("/", async (_req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     serverEpoch: SERVER_EPOCH,
+    p95Ms,
+    dbQueryMs,
+    memoryPct,
+    diskPct,
   });
 });
 
