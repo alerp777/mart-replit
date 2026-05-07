@@ -1,6 +1,7 @@
 import { randomInt } from "crypto";
 import { logger } from "../lib/logger.js";
 import { isInServiceZone } from "../lib/geofence.js";
+import { verifyOwnership } from "../middleware/verifyOwnership.js";
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import {
@@ -1611,7 +1612,7 @@ router.get("/:id/stream", customerAuth, async (req, res) => {
   }, SSE_HEARTBEAT_MS);
 });
 
-router.get("/:id", customerAuth, async (req, res) => {
+router.get("/:id", customerAuth, verifyOwnership("ride"), async (req, res) => {
   const callerId = req.customerId!;
 
   const rideId = String(req.params["id"]);

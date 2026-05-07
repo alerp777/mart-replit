@@ -20,6 +20,7 @@ import {
   type AdminRequest, revokeAllUserSessions,
 } from "../admin-shared.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError, sendErrorWithData } from "../../lib/response.js";
+import { buildCursorPage, decodeCursor } from "../../lib/pagination/cursor.js";
 import {
   ORDER_VALID_STATUSES, RIDE_VALID_STATUSES, PARCEL_VALID_STATUSES, PHARMACY_ORDER_VALID_STATUSES,
   getSocketRoom,
@@ -72,7 +73,7 @@ router.post("/orders", async (req, res) => {
 });
 
 router.get("/orders", async (req, res) => {
-  const { status, type, limit: lim } = req.query;
+  const { status, type } = req.query;
   const settings = await getCachedSettings();
   const isDemoMode = (settings["platform_mode"] ?? "demo") === "demo";
 
@@ -86,20 +87,49 @@ router.get("/orders", async (req, res) => {
     return;
   }
 
-  const orders = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt)).limit(Number(lim) || 200);
+  /* Cursor-paginated list — default 50, hard cap 200.
+     ?after=<cursor>  — opaque base64url cursor from a previous response
+     ?limit=<n>       — page size (1-200, default 50) */
+  const rawLimit = parseInt(String(req.query["limit"] ?? "50"), 10);
+  const pageLimit = Math.min(Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 50), 200);
 
-  const filtered = orders
-    .filter(o => !status || o.status === status)
-    .filter(o => !type || o.type === type);
+  const cursorVal = decodeCursor(String(req.query["after"] ?? ""));
+  let cursorDate: Date | null = null;
+  if (cursorVal) {
+    const ts = new Date(cursorVal);
+    if (!isNaN(ts.getTime())) cursorDate = ts;
+  }
+
+  const whereClause = and(
+    status ? sql`${ordersTable.status} = ${status}` : undefined,
+    type   ? sql`${ordersTable.type} = ${type}`     : undefined,
+    cursorDate ? sql`${ordersTable.createdAt} < ${cursorDate}` : undefined,
+  );
+
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(whereClause)
+    .orderBy(desc(ordersTable.createdAt))
+    .limit(pageLimit + 1);
+
+  type OrderRow = (typeof rows)[number];
+  const cursorPageResult = buildCursorPage<OrderRow>({
+    data: rows,
+    limit: pageLimit,
+    getCursorValue: (o: OrderRow) => (o.createdAt instanceof Date ? o.createdAt : new Date(String(o.createdAt))).toISOString(),
+  });
 
   sendSuccess(res, {
-    orders: filtered.map(o => ({
+    orders: cursorPageResult.data.map((o: OrderRow) => ({
       ...o,
       total: parseFloat(String(o.total)),
-      createdAt: o.createdAt.toISOString(),
-      updatedAt: o.updatedAt.toISOString(),
+      createdAt: (o.createdAt instanceof Date ? o.createdAt : new Date(String(o.createdAt))).toISOString(),
+      updatedAt: (o.updatedAt instanceof Date ? o.updatedAt : new Date(String(o.updatedAt))).toISOString(),
     })),
-    total: filtered.length,
+    total: cursorPageResult.data.length,
+    nextCursor: cursorPageResult.nextCursor,
+    hasMore: cursorPageResult.hasMore,
     isDemo: false,
   });
 });

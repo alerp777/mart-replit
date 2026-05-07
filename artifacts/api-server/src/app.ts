@@ -149,6 +149,53 @@ export function createServer() {
   // Trust proxy (for proper IP detection behind reverse proxy/load balancer)
   app.set('trust proxy', 1);
 
+  /* ── Request/response timing logger (pino-http) — MUST be first middleware ──
+     Emits one structured JSON log line per request/response with:
+       requestId, method, url, statusCode, responseTime (ms)
+     The requestId is also propagated as x-request-id response header and
+     attached to req so Sentry / audit / downstream middleware can reference it.
+     Position: first, so every request including 404s and proxy responses is
+     captured and the requestId is available to all later middleware. */
+  app.use(pinoHttp({
+    logger: pinoInstance,
+    genReqId: (req, res) => {
+      const existing = req.headers["x-request-id"] as string | undefined;
+      const id = existing || crypto.randomUUID();
+      res.setHeader("x-request-id", id);
+      return id;
+    },
+    customLogLevel: (_req, res, err) => {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    serializers: {
+      req: (req) => ({
+        method: req.method,
+        url: req.url,
+        requestId: req.id,
+      }),
+      res: (res) => ({
+        statusCode: res.statusCode,
+      }),
+    },
+  }));
+
+  /* ── Sentry request handler (official pattern) ─────────────────────────────
+     When @sentry/node is installed and initialised (see index.ts IIFE),
+     mount Sentry.Handlers.requestHandler() BEFORE all routes so Sentry can
+     attach request context (url, method, headers, user) to every captured
+     event. Falls back silently if Sentry is not installed. */
+  {
+    const sentryMod = (globalThis as Record<string, unknown>)["__sentryInstance"] as Record<string, unknown> | undefined;
+    if (sentryMod && typeof sentryMod["Handlers"] === "object" && sentryMod["Handlers"]) {
+      const handlers = sentryMod["Handlers"] as Record<string, unknown>;
+      if (typeof handlers["requestHandler"] === "function") {
+        app.use((handlers["requestHandler"] as () => express.RequestHandler)());
+      }
+    }
+  }
+
   /* ── Dev-only: serve sw.js files directly with Clear-Site-Data so the
         browser clears its SW cache on every update check. SW script fetches
         bypass the SW's own fetch handler (per spec), so this header is
@@ -296,36 +343,6 @@ export function createServer() {
   
   app.use(cookieParser());
 
-  /* ── Request/response timing logger (pino-http) ─────────────────────────
-     Emits one structured JSON log line per request/response with:
-       requestId, method, url, statusCode, responseTime (ms)
-     The requestId is also propagated as x-request-id response header and
-     attached to req so Sentry / audit / downstream middleware can reference it. */
-  app.use(pinoHttp({
-    logger: pinoInstance,
-    genReqId: (req, res) => {
-      const existing = req.headers["x-request-id"] as string | undefined;
-      const id = existing || crypto.randomUUID();
-      res.setHeader("x-request-id", id);
-      return id;
-    },
-    customLogLevel: (_req, res, err) => {
-      if (err || res.statusCode >= 500) return "error";
-      if (res.statusCode >= 400) return "warn";
-      return "info";
-    },
-    serializers: {
-      req: (req) => ({
-        method: req.method,
-        url: req.url,
-        requestId: req.id,
-      }),
-      res: (res) => ({
-        statusCode: res.statusCode,
-      }),
-    },
-  }));
-
   /* Capture raw body bytes on every JSON request so endpoints that rely on
      request signing (e.g. /api/error-reports HMAC-SHA256 verification) can
      hash the exact bytes the client signed, regardless of JSON formatting
@@ -401,27 +418,32 @@ export function createServer() {
     app.use(expoProxy);
   }
 
-  /* ── Sentry error handler (must be before custom error handler) ──────────
-     When @sentry/node is installed and SENTRY_DSN is set, Sentry captures
-     unhandled Express errors with requestId + userId context attached. */
-  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  /* ── Sentry error handler (official pattern, must be before global handler) ─
+     When @sentry/node is installed and initialised, mount the official
+     Sentry.Handlers.errorHandler() which automatically captures unhandled
+     Express errors and attaches request context. Falls back to the manual
+     captureException approach if Handlers API is unavailable. */
+  {
     const sentryMod = (globalThis as Record<string, unknown>)["__sentryInstance"] as Record<string, unknown> | undefined;
-    if (sentryMod && typeof sentryMod["withScope"] === "function") {
-      (sentryMod["withScope"] as (cb: (scope: unknown) => void) => void)((scope) => {
-        const s = scope as Record<string, (...args: unknown[]) => void>;
-        if (typeof s["setTag"] === "function") s["setTag"]("requestId", (req as unknown as Record<string, unknown>)["id"] ?? "unknown");
-        if (typeof s["setUser"] === "function") {
-          const r = req as unknown as Record<string, unknown>;
-          const uid = (r["customerId"] ?? r["riderId"] ?? r["vendorId"] ?? "anonymous") as string;
-          s["setUser"]({ id: uid });
+    if (sentryMod && typeof sentryMod["Handlers"] === "object" && sentryMod["Handlers"]) {
+      const handlers = sentryMod["Handlers"] as Record<string, unknown>;
+      if (typeof handlers["errorHandler"] === "function") {
+        app.use((handlers["errorHandler"] as () => express.ErrorRequestHandler)());
+      }
+    } else if (sentryMod && typeof sentryMod["captureException"] === "function") {
+      app.use((err: Error, req: express.Request, _res: express.Response, next: express.NextFunction) => {
+        const s = sentryMod as Record<string, (...args: unknown[]) => void>;
+        if (typeof s["withScope"] === "function") {
+          s["withScope"]((scope: unknown) => {
+            const sc = scope as Record<string, (...args: unknown[]) => void>;
+            if (typeof sc["setTag"] === "function") sc["setTag"]("requestId", (req as unknown as Record<string, unknown>)["id"] ?? "unknown");
+          });
         }
-        if (typeof sentryMod["captureException"] === "function") {
-          (sentryMod["captureException"] as (e: unknown) => void)(err);
-        }
+        s["captureException"](err);
+        next(err);
       });
     }
-    next(err);
-  });
+  }
 
   /* ── Global error handler ──────────────────────────────────────────────── */
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

@@ -50,6 +50,7 @@ import { canonicalizePhone } from "@workspace/phone-utils";
 import { isAuthMethodEnabled, isAuthMethodEnabledStrict } from "@workspace/auth-utils/server";
 import { validateBody as sharedValidateBody } from "../middleware/validate.js";
 import { authLimiter, loginLimiter, otpLimiter } from "../middleware/rate-limit.js";
+import { SendOtpSchema, VerifyOtpSchema, UserLoginSchema } from "../lib/validation/schemas.js";
 
 /* OTP rate limiting is handled per-account + per-IP inside the route handler
    using the admin-configurable settings (security_otp_max_per_phone,
@@ -76,32 +77,11 @@ const phoneSchema = z
   .max(20, "Phone number too long")
   .regex(/^[\d\s\-()+]{7,20}$/, "Phone number must contain only digits, spaces, dashes, or parentheses");
 
-const sendOtpSchema = z.object({
-  phone: phoneSchema,
-  role: z.enum(["customer", "rider", "vendor"]).optional(),
-  deviceId: z.string().max(256).optional(),
-  preferredChannel: z.enum(["whatsapp", "sms", "email"]).optional(),
-  captchaToken: z.string().optional(),
-}).strip();
-
-const verifyOtpSchema = z.object({
-  phone: phoneSchema,
-  otp: z.string().length(6, "OTP must be exactly 6 digits").regex(/^\d{6}$/, "OTP must be 6 digits"),
-  deviceFingerprint: z.string().max(512).optional(),
-  deviceId: z.string().max(256).optional(),
-  role: z.enum(["customer", "rider", "vendor"]).optional(),
-}).strip();
-
-const loginSchema = z.object({
-  identifier: z.string().min(3, "Identifier (phone, email, or username) is required").optional(),
-  username: z.string().min(3).optional(),
-  password: z.string().min(1, "Password is required"),
-  deviceFingerprint: z.string().max(512).optional(),
-  role: z.enum(["customer", "rider", "vendor"]).optional(),
-}).strip().refine(d => d.identifier || d.username, {
-  message: "Phone, email, or username is required",
-  path: ["identifier"],
-});
+/* OTP / login schemas — consolidated aliases so all sharedValidateBody()
+   call sites below continue to compile unchanged. */
+const sendOtpSchema = SendOtpSchema;
+const verifyOtpSchema = VerifyOtpSchema;
+const loginSchema = UserLoginSchema;
 
 /* refreshToken is optional in the body because rider clients now carry the
    refresh credential as an HttpOnly cookie (`ajkmart_rider_refresh`); the
@@ -1698,23 +1678,12 @@ async function handleRefreshToken(req: Request, res: any) {
     /* Rider (explicit or legacy default) */
     cookieToken = refreshCookies[RIDER_REFRESH_COOKIE] || refreshCookies[VENDOR_REFRESH_COOKIE];
   }
-  /* Body token fallback has been retired — refresh tokens must arrive as
-     HttpOnly cookies (rider: ajkmart_rider_refresh, vendor: ajkmart_vendor_refresh).
-     In dev mode only, a body token is accepted with a loud console warning so
-     existing test harnesses and Postman collections continue to work during
-     migration. Production enforces cookie-only strictly. */
+  /* Refresh tokens must arrive as HttpOnly cookies only. Body token submission
+     is rejected unconditionally — in all environments — to prevent accidental
+     token leakage via request logs, browser history, or CORS. */
   const ip = getClientIp(req);
 
   if (!cookieToken || cookieToken.length < 10) {
-    if (process.env.NODE_ENV !== "production") {
-      const bodyToken = (req.body && typeof req.body === "object")
-        ? (req.body as { refreshToken?: string }).refreshToken
-        : undefined;
-      if (bodyToken && bodyToken.length >= 10) {
-        console.warn("[auth/refresh] DEV ONLY: Body refresh token accepted — clients must migrate to HttpOnly cookie before going to production.");
-        return doRefresh(bodyToken, ip, req, res);
-      }
-    }
     res.status(400).json({ error: "Refresh token required. Please log in again." });
     return;
   }

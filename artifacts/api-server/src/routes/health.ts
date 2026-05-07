@@ -54,7 +54,7 @@ router.get("/", async (_req, res) => {
   const overallStatus: "ok" | "degraded" | "down" =
     db2 === "error" ? "down" : redis2 === "error" ? "degraded" : "ok";
 
-  const httpStatus = db2 === "error" ? 503 : 200;
+  const httpStatus = (db2 === "error" || redis2 === "error") ? 503 : 200;
 
   res.status(httpStatus).json({
     status: overallStatus,

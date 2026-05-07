@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger.js";
 import { db } from "@workspace/db";
+import { verifyOwnership } from "../middleware/verifyOwnership.js";
 import { notificationsTable, pharmacyOrdersTable, productsTable, usersTable, walletTransactionsTable, liveLocationsTable } from "@workspace/db/schema";
 import { eq, sql, and, gte, count, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
@@ -76,7 +77,7 @@ router.get("/", customerAuth, async (req, res) => {
   sendSuccess(res, { orders: orders.map(o => mapOrder(o)), total: orders.length });
 });
 
-router.get("/:id", customerAuth, async (req, res) => {
+router.get("/:id", customerAuth, verifyOwnership("pharmacy_order"), async (req, res) => {
   const userId = req.customerId!;
   const [order] = await db
     .select()

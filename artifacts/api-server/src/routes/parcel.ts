@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
+import { verifyOwnership } from "../middleware/verifyOwnership.js";
 import { notificationsTable, parcelBookingsTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
 import { eq, sql, and, gte, count } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
@@ -96,7 +97,7 @@ router.get("/", customerAuth, async (req, res) => {
   sendSuccess(res, { bookings: bookings.map(mapBooking).reverse(), total: bookings.length });
 });
 
-router.get("/:id", customerAuth, async (req, res) => {
+router.get("/:id", customerAuth, verifyOwnership("parcel_booking"), async (req, res) => {
   const userId = req.customerId!;
   const [booking] = await db
     .select()

@@ -325,7 +325,7 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultPlatformSetting[] = [
 
   /* ── JWT ─────────────────────────────────────────────────────────────── */
   { key: "jwt_access_ttl_sec",       value: "900",   label: "Access Token TTL (sec)",         category: "jwt" },
-  { key: "jwt_refresh_ttl_days",     value: "30",    label: "Refresh Token TTL (days)",       category: "jwt" },
+  { key: "jwt_refresh_ttl_days",     value: "7",     label: "Refresh Token TTL (days)",       category: "jwt" },
   { key: "jwt_2fa_challenge_sec",    value: "300",   label: "2FA Challenge TTL (sec)",        category: "jwt" },
 
   /* ── MODERATION ──────────────────────────────────────────────────────── */

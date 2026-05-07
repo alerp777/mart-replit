@@ -30,6 +30,8 @@ import {
   ridesTable,
   vendorProfilesTable,
   riderProfilesTable,
+  pharmacyOrdersTable,
+  parcelBookingsTable,
 } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
@@ -40,7 +42,9 @@ export type OwnershipResourceType =
   | "wallet_transaction"
   | "order"
   | "ride"
-  | "user";
+  | "user"
+  | "pharmacy_order"
+  | "parcel_booking";
 
 function getCallerId(req: Request): string | undefined {
   return (
@@ -158,6 +162,26 @@ export function verifyOwnership(resourceType: OwnershipResourceType) {
 
         case "user": {
           ownerId = resourceId;
+          break;
+        }
+
+        case "pharmacy_order": {
+          const [row] = await db
+            .select({ userId: pharmacyOrdersTable.userId })
+            .from(pharmacyOrdersTable)
+            .where(eq(pharmacyOrdersTable.id, resourceId))
+            .limit(1);
+          ownerId = row?.userId ?? null;
+          break;
+        }
+
+        case "parcel_booking": {
+          const [row] = await db
+            .select({ userId: parcelBookingsTable.userId })
+            .from(parcelBookingsTable)
+            .where(eq(parcelBookingsTable.id, resourceId))
+            .limit(1);
+          ownerId = row?.userId ?? null;
           break;
         }
 

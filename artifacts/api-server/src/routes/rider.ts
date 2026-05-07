@@ -9,6 +9,7 @@ import { getPlatformSettings } from "./admin.js";
 import { verifyUserJwt, getCachedSettings, detectGPSSpoof, addSecurityEvent, getClientIp } from "../middleware/security.js";
 import { handleOsrmRateLimit } from "../utils/osrmRateLimit.js";
 import { emitRiderLocation, emitRiderStatus, emitRideDispatchUpdate, emitRideOtp, getIO } from "../lib/socketio.js";
+import { buildCursorPage, decodeCursor, encodeCursor } from "../lib/pagination/cursor.js";
 import { emitRideUpdate } from "../lib/rideEvents.js";
 import { sendPushToUser } from "../lib/webpush.js";
 import { z } from "zod";
@@ -2023,16 +2024,18 @@ router.get("/wallet/transactions", async (req, res) => {
 
   const limit = parseLimit(req.query["limit"], 50, 200);
 
-  /* Decode opaque cursor → { createdAt, id }. Bad/forged cursors are silently
-     treated as "no cursor" so a stale link cannot 500 the endpoint. */
+  /* Decode compound cursor (createdAt + id) using the shared cursor utility.
+     Compound keys guarantee deterministic ordering even when two transactions
+     land in the same millisecond. Bad/forged cursors are silently treated as
+     "no cursor" so a stale link cannot 500 the endpoint. */
   let cursorCreatedAt: Date | null = null;
   let cursorId: string | null = null;
-  const cursorRaw = String(req.query["cursor"] ?? "");
-  if (cursorRaw) {
+  const cursorDecoded = decodeCursor(String(req.query["cursor"] ?? ""));
+  if (cursorDecoded) {
     try {
-      const decoded = JSON.parse(Buffer.from(cursorRaw, "base64").toString("utf8"));
-      const ts = typeof decoded?.createdAt === "string" ? new Date(decoded.createdAt) : null;
-      const cid = typeof decoded?.id === "string" ? decoded.id : null;
+      const parsed = JSON.parse(cursorDecoded);
+      const ts = typeof parsed?.createdAt === "string" ? new Date(parsed.createdAt) : null;
+      const cid = typeof parsed?.id === "string" ? parsed.id : null;
       if (ts && !isNaN(ts.getTime()) && cid) { cursorCreatedAt = ts; cursorId = cid; }
     } catch { /* ignore malformed cursor */ }
   }
@@ -2054,20 +2057,21 @@ router.get("/wallet/transactions", async (req, res) => {
     .orderBy(desc(walletTransactionsTable.createdAt), desc(walletTransactionsTable.id))
     .limit(limit + 1);
 
-  const hasMore = rows.length > limit;
-  const page = hasMore ? rows.slice(0, limit) : rows;
-
-  let nextCursor: string | null = null;
-  if (hasMore) {
-    const last = page[page.length - 1]!;
-    const createdAt = last.createdAt instanceof Date
-      ? last.createdAt
-      : new Date(String(last.createdAt));
-    nextCursor = Buffer.from(JSON.stringify({
-      createdAt: createdAt.toISOString(),
-      id: last.id,
-    }), "utf8").toString("base64");
-  }
+  /* Use the shared buildCursorPage utility for consistent page slicing.
+     The cursor value is the JSON-encoded compound key so clients remain
+     decoupled from internal field names. */
+  type WalletTxRow = (typeof rows)[number];
+  const cursorPage = buildCursorPage<WalletTxRow>({
+    data: rows,
+    limit,
+    getCursorValue: (row: WalletTxRow) => {
+      const createdAt = row.createdAt instanceof Date
+        ? row.createdAt
+        : new Date(String(row.createdAt));
+      return JSON.stringify({ createdAt: createdAt.toISOString(), id: row.id });
+    },
+  });
+  const { data: page, nextCursor, hasMore } = cursorPage;
 
   const [promoRow] = await db.select({ s: sum(walletTransactionsTable.amount) })
     .from(walletTransactionsTable)
