@@ -3,6 +3,7 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { useSocket } from "../lib/socket";
 import { playRequestSound, stopSound } from "../lib/notificationSound";
+import { Bot, Send, Trash2, Sparkles } from "lucide-react";
 
 interface OtherUser { id: string; name: string | null; ajkId: string | null; }
 interface Conversation { id: string; otherUser: OtherUser; lastMessage: { content: string } | null; unreadCount: number; lastMessageAt: string | null; }
@@ -11,6 +12,7 @@ interface CommRequest { id: string; status: string; sender?: { name: string; ajk
 interface SearchResult { id: string; name: string; ajkId: string; role: string; }
 interface IncomingCallData { callId: string; callerId: string; callerName?: string; callerAjkId?: string; }
 interface CallSignal { callId: string; callerId?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit; }
+interface AiMessage { role: "user" | "assistant"; content: string; }
 
 export default function Chat() {
   const { user } = useAuth();
@@ -24,7 +26,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [ajkId, setAjkId] = useState("");
   const [requests, setRequests] = useState<CommRequest[]>([]);
-  const [tab, setTab] = useState<"chats" | "requests" | "search">("chats");
+  const [tab, setTab] = useState<"chats" | "requests" | "search" | "ai">("chats");
   const [typing, setTyping] = useState(false);
   const [callActive, setCallActive] = useState(false);
   const [callId, setCallId] = useState<string | null>(null);
@@ -32,6 +34,13 @@ export default function Chat() {
   const [muted, setMuted] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+
+  /* AI Assistant state */
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiScrollRef = useRef<HTMLDivElement>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -49,6 +58,50 @@ export default function Chat() {
     }
   }, []);
 
+  const loadConversations = useCallback(() => {
+    api.apiFetch("/communication/conversations").then(setConversations).catch(() => {});
+  }, []);
+
+  const loadRequests = useCallback(() => {
+    api.apiFetch("/communication/requests?type=received").then(setRequests).catch(() => {});
+  }, []);
+
+  const endCall = useCallback(() => {
+    stopSound();
+    if (callId) {
+      api.apiFetch(`/communication/calls/${callId}/end`, { method: "POST", body: JSON.stringify({ duration: callTimer }) }).catch(() => {});
+      const otherId = selectedConv?.otherUser?.id;
+      if (otherId && socket) socket.emit("comm:call:end", { callId, targetUserId: otherId });
+    }
+    /* Clean up peer connection, media streams, and timer (S6) */
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setCallActive(false);
+    setCallId(null);
+    setCallTimer(0);
+    setIncomingCall(null);
+    trickleIceRef.current = null;
+  }, [callId, callTimer, selectedConv, socket]);
+
+  /* Bug fix: keep a ref that always points at the latest endCall so socket
+     event handlers registered on mount don't capture a stale closure
+     (where callId and callTimer would still be their initial null/0 values). */
+  const endCallRef = useRef(endCall);
+  useEffect(() => { endCallRef.current = endCall; }, [endCall]);
+
   /* Socket event listeners - keyed on user?.id to rebind on user change */
   useEffect(() => {
     if (!socket || !user?.id) return;
@@ -65,10 +118,12 @@ export default function Chat() {
     socket.on("comm:request:accepted", () => { loadConversations(); loadRequests(); });
     socket.on("comm:call:incoming", async (data: IncomingCallData) => {
       setIncomingCall(data);
-      playRequestSound(); /* Play ring tone on incoming call (C7, PWA7) */
+      playRequestSound();
     });
-    socket.on("comm:call:ended", () => { stopSound(); endCall(); });
-    socket.on("comm:call:rejected", () => { stopSound(); endCall(); });
+    /* Use endCallRef so these handlers always call the latest endCall, even
+       after callId / callTimer have changed since the socket was connected. */
+    socket.on("comm:call:ended", () => { stopSound(); endCallRef.current(); });
+    socket.on("comm:call:rejected", () => { stopSound(); endCallRef.current(); });
     socket.on("comm:call:offer", async (data: CallSignal) => {
       if (!pcRef.current || !data.sdp) return;
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
@@ -106,10 +161,7 @@ export default function Chat() {
       socket.removeAllListeners("comm:call:answer");
       socket.removeAllListeners("comm:call:ice-candidate");
     };
-  }, [socket, user?.id]);
-
-  const loadConversations = () => api.apiFetch("/communication/conversations").then(setConversations).catch(() => {});
-  const loadRequests = () => api.apiFetch("/communication/requests?type=received").then(setRequests).catch(() => {});
+  }, [socket, user?.id, loadConversations, loadRequests]);
 
   const selectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
@@ -142,11 +194,11 @@ export default function Chat() {
 
   const searchUser = async () => {
     if (!searchId.trim()) return;
-    try { 
+    try {
       const result = await api.apiFetch(`/communication/search/${searchId.toUpperCase()}`);
       setSearchResult(result);
-    } catch { 
-      setSearchResult(null); 
+    } catch {
+      setSearchResult(null);
     }
   };
 
@@ -160,20 +212,20 @@ export default function Chat() {
     }
   };
 
-  const acceptRequest = async (id: string) => { 
+  const acceptRequest = async (id: string) => {
     try {
-      await api.apiFetch(`/communication/requests/${id}/accept`, { method: "PATCH" }); 
-      loadRequests(); 
-      loadConversations(); 
+      await api.apiFetch(`/communication/requests/${id}/accept`, { method: "PATCH" });
+      loadRequests();
+      loadConversations();
     } catch (e) {
       setSendError((e as Error)?.message || "Failed to accept request");
     }
   };
 
-  const rejectRequest = async (id: string) => { 
+  const rejectRequest = async (id: string) => {
     try {
-      await api.apiFetch(`/communication/requests/${id}/reject`, { method: "PATCH" }); 
-      loadRequests(); 
+      await api.apiFetch(`/communication/requests/${id}/reject`, { method: "PATCH" });
+      loadRequests();
     } catch (e) {
       setSendError((e as Error)?.message || "Failed to reject request");
     }
@@ -181,29 +233,29 @@ export default function Chat() {
 
   const startCall = async (calleeId: string) => {
     try {
-      if (pcRef.current) pcRef.current.close(); /* Close any prior peer connection (S8) */
+      if (pcRef.current) pcRef.current.close();
       if (localStreamRef.current) localStreamRef.current.getTracks().forEach(t => t.stop());
-      
+
       const data = await api.apiFetch("/communication/calls/initiate", { method: "POST", body: JSON.stringify({ calleeId, conversationId: selectedConv?.id }) });
       setCallId(data.callId);
       setCallActive(true);
       timerRef.current = setInterval(() => setCallTimer(t => t + 1), 1000);
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       localStreamRef.current = stream;
       const trickleIce = data.trickleIce !== false;
       trickleIceRef.current = trickleIce;
-      
+
       const pc = new RTCPeerConnection({ iceServers: data.iceServers, iceCandidatePoolSize: 10 });
       pcRef.current = pc;
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
-      
+
       pc.onicecandidate = (e) => {
         if (e.candidate && trickleIce && socket) {
           socket.emit("comm:call:ice-candidate", { callId: data.callId, targetUserId: calleeId, candidate: e.candidate });
         }
       };
-      
+
       pc.ontrack = (e) => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = e.streams[0];
@@ -212,7 +264,7 @@ export default function Chat() {
           });
         }
       };
-      
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       if (!trickleIce) {
@@ -226,36 +278,6 @@ export default function Chat() {
       setSendError((e as Error)?.message || "Failed to start call");
     }
   };
-
-  const endCall = useCallback(() => {
-    stopSound();
-    if (callId) {
-      api.apiFetch(`/communication/calls/${callId}/end`, { method: "POST", body: JSON.stringify({ duration: callTimer }) }).catch(() => {});
-      const otherId = selectedConv?.otherUser?.id;
-      if (otherId && socket) socket.emit("comm:call:end", { callId, targetUserId: otherId });
-    }
-    /* Clean up peer connection, media streams, and timer (S6) */
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
-      localStreamRef.current = null;
-    }
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    setCallActive(false);
-    setCallId(null);
-    setCallTimer(0);
-    setIncomingCall(null);
-    trickleIceRef.current = null;
-  }, [callId, callTimer, selectedConv, socket]);
 
   const toggleMute = () => {
     if (localStreamRef.current) {
@@ -271,27 +293,27 @@ export default function Chat() {
       if (!incomingCall) return;
       if (pcRef.current) pcRef.current.close();
       if (localStreamRef.current) localStreamRef.current.getTracks().forEach(t => t.stop());
-      
+
       const ad = await api.apiFetch(`/communication/calls/${incomingCall.callId}/answer`, { method: "POST" });
       setCallActive(true);
       setCallId(incomingCall.callId);
       timerRef.current = setInterval(() => setCallTimer(t => t + 1), 1000);
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       localStreamRef.current = stream;
       const trickleIce = ad.trickleIce !== false;
       trickleIceRef.current = trickleIce;
-      
+
       const pc = new RTCPeerConnection({ iceServers: ad.iceServers || [{ urls: "stun:stun.l.google.com:19302" }], iceCandidatePoolSize: 10 });
       pcRef.current = pc;
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
-      
+
       pc.onicecandidate = (e) => {
         if (e.candidate && trickleIce && socket) {
           socket.emit("comm:call:ice-candidate", { callId: incomingCall.callId, targetUserId: incomingCall.callerId, candidate: e.candidate });
         }
       };
-      
+
       pc.ontrack = (e) => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = e.streams[0];
@@ -300,12 +322,41 @@ export default function Chat() {
           });
         }
       };
-      
+
       setIncomingCall(null);
     } catch (e) {
       setSendError((e as Error)?.message || "Failed to answer call");
     }
   };
+
+  /* ── AI Assistant ── */
+  const sendAiMessage = async () => {
+    const text = aiInput.trim();
+    if (!text || aiLoading) return;
+
+    const userMsg: AiMessage = { role: "user", content: text };
+    const newHistory = [...aiMessages, userMsg];
+    setAiMessages(newHistory);
+    setAiInput("");
+    setAiLoading(true);
+
+    try {
+      const result = await api.aiChat(text, aiMessages.slice(-10));
+      setAiMessages(prev => [...prev, { role: "assistant", content: result.reply }]);
+    } catch {
+      setAiMessages(prev => [...prev, { role: "assistant", content: "Sorry, I couldn't connect right now. Please try again." }]);
+    } finally {
+      setAiLoading(false);
+      setTimeout(() => aiScrollRef.current?.scrollTo(0, aiScrollRef.current.scrollHeight), 100);
+    }
+  };
+
+  const SUGGESTED_QUESTIONS = [
+    "How do I increase my earnings?",
+    "How does the wallet withdrawal work?",
+    "What should I do if a customer isn't available?",
+    "How do I report a problem with an order?",
+  ];
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -316,16 +367,17 @@ export default function Chat() {
             <h2 className="text-xl font-bold mb-2">Incoming Call</h2>
             <p className="text-gray-500 mb-6">{incomingCall.callerName} ({incomingCall.callerAjkId})</p>
             <div className="flex gap-4 justify-center">
-              <button onClick={async () => { 
-                setIncomingCall(null); 
+              <button onClick={async () => {
+                const captured = incomingCall;
+                setIncomingCall(null);
                 stopSound();
-                if (incomingCall) {
+                if (captured) {
                   try {
-                    await api.apiFetch(`/communication/calls/${incomingCall.callId}/reject`, { method: "POST" });
+                    await api.apiFetch(`/communication/calls/${captured.callId}/reject`, { method: "POST" });
                   } catch (e) {
                     setSendError((e as Error)?.message || "Failed to reject call");
                   }
-                } 
+                }
               }} className="w-16 h-16 rounded-full bg-red-500 text-white text-2xl flex items-center justify-center">✕</button>
               <button onClick={handleAcceptCall} className="w-16 h-16 rounded-full bg-green-500 text-white text-2xl flex items-center justify-center">📞</button>
             </div>
@@ -349,17 +401,18 @@ export default function Chat() {
           {ajkId && <button onClick={() => navigator.clipboard.writeText(ajkId)} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full font-bold">{ajkId} 📋</button>}
         </div>
         {!selectedConv && (
-          <div className="flex gap-1 mb-3">
-            {(["chats", "requests", "search"] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === t ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600"}`}>
-                {t === "chats" ? "Chats" : t === "requests" ? `Requests${requests.length ? ` (${requests.length})` : ""}` : "Search"}
+          <div className="flex gap-1 mb-3 overflow-x-auto pb-1">
+            {(["chats", "requests", "search", "ai"] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)} className={`px-3 py-2 rounded-xl text-sm font-bold transition flex-shrink-0 flex items-center gap-1.5 ${tab === t ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600"}`}>
+                {t === "ai" && <Sparkles size={13} />}
+                {t === "chats" ? "Chats" : t === "requests" ? `Requests${requests.length ? ` (${requests.length})` : ""}` : t === "search" ? "Search" : "AI Help"}
               </button>
             ))}
           </div>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4" ref={scrollRef}>
+      <div className={`flex-1 overflow-y-auto px-4 ${tab === "ai" && !selectedConv ? "flex flex-col" : ""}`} ref={tab === "ai" ? undefined : scrollRef}>
         {selectedConv ? (
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-3 py-3 border-b mb-3">
@@ -418,7 +471,7 @@ export default function Chat() {
             ))}
             {requests.length === 0 && <p className="text-center py-12 text-gray-400">No pending requests</p>}
           </div>
-        ) : (
+        ) : tab === "search" ? (
           <div className="space-y-3">
             <div className="flex gap-2">
               <input value={searchId} onChange={e => setSearchId(e.target.value)} placeholder="Enter AJK ID" className="flex-1 h-12 px-4 rounded-xl border outline-none" />
@@ -430,6 +483,83 @@ export default function Chat() {
                 <button onClick={() => sendRequest(searchResult.id)} className="px-4 py-2 rounded-xl bg-emerald-500 text-white text-sm font-bold">Send Request</button>
               </div>
             )}
+          </div>
+        ) : (
+          /* ── AI Assistant Tab ── */
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* Header card */}
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-4 mb-4 flex items-center gap-3 text-white flex-shrink-0">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                <Bot size={22} />
+              </div>
+              <div className="flex-1">
+                <p className="font-extrabold text-sm">AJKMart AI Assistant</p>
+                <p className="text-xs text-emerald-100">Ask anything about your rides, earnings & more</p>
+              </div>
+              {aiMessages.length > 0 && (
+                <button onClick={() => setAiMessages([])} className="bg-white/20 rounded-lg p-1.5" title="Clear chat">
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Messages area */}
+            <div className="flex-1 overflow-y-auto space-y-3 pb-3" ref={aiScrollRef}>
+              {aiMessages.length === 0 ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-400 text-center font-semibold">Suggested questions</p>
+                  {SUGGESTED_QUESTIONS.map((q, i) => (
+                    <button key={i} onClick={() => { setAiInput(q); }} className="w-full text-left p-3.5 rounded-xl bg-gray-50 border border-gray-100 text-sm text-gray-700 font-medium hover:bg-emerald-50 hover:border-emerald-200 transition-colors">
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                aiMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    {msg.role === "assistant" && (
+                      <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
+                        <Bot size={14} className="text-emerald-600" />
+                      </div>
+                    )}
+                    <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-emerald-500 text-white rounded-br-md" : "bg-gray-100 text-gray-800 rounded-bl-md"}`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))
+              )}
+              {aiLoading && (
+                <div className="flex justify-start">
+                  <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center mr-2 flex-shrink-0">
+                    <Bot size={14} className="text-emerald-600" />
+                  </div>
+                  <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-bl-md flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="flex gap-2 pt-3 border-t flex-shrink-0">
+              <input
+                value={aiInput}
+                onChange={e => setAiInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendAiMessage()}
+                placeholder="Ask me anything..."
+                className="flex-1 h-11 px-4 rounded-xl border outline-none text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
+                disabled={aiLoading}
+              />
+              <button
+                onClick={sendAiMessage}
+                disabled={aiLoading || !aiInput.trim()}
+                className="h-11 w-11 rounded-xl bg-emerald-500 text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+              >
+                <Send size={16} />
+              </button>
+            </div>
           </div>
         )}
       </div>

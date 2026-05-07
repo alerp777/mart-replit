@@ -3145,4 +3145,44 @@ router.get("/osrm-route", async (req, res) => {
   }
 });
 
+/* ── Rider AI Assistant ────────────────────────────────────────────────────────
+   POST /rider/ai-chat
+   Riders can ask questions about their work, earnings, app features, policies,
+   etc. Uses Gemini with a rider-specific system prompt; falls back to smart
+   templates when the API key is unavailable. */
+const aiChatSchema = z.object({
+  message: z.string().min(1).max(2000),
+  history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).max(20).optional(),
+});
+
+router.post("/ai-chat", verifyUserJwt, async (req, res) => {
+  const parse = aiChatSchema.safeParse(req.body);
+  if (!parse.success) { sendError(res, "Invalid request", 400); return; }
+  const { message, history = [] } = parse.data;
+
+  try {
+    const { generateAIContent } = await import("../services/communicationAI.js");
+
+    const RIDER_SYSTEM =
+      "You are a helpful AI assistant for AJKMart rider partners in AJK, Pakistan. " +
+      "You answer questions about deliveries, rides, earnings, wallet, policies, app features, and support. " +
+      "Keep answers short (2-4 sentences), practical, and friendly. Respond in the same language as the question (Urdu or English).";
+
+    const historyText = history
+      .slice(-6)
+      .map(h => `${h.role === "user" ? "Rider" : "Assistant"}: ${h.content}`)
+      .join("\n");
+
+    const fullPrompt = historyText
+      ? `${RIDER_SYSTEM}\n\nConversation so far:\n${historyText}\n\nRider: ${message}\nAssistant:`
+      : `${RIDER_SYSTEM}\n\nRider: ${message}\nAssistant:`;
+
+    const result = await generateAIContent(fullPrompt);
+    sendSuccess(res, { reply: result.content, source: result.source });
+  } catch (err) {
+    logger.error({ err }, "rider ai-chat error");
+    sendError(res, "Could not get AI response", 500);
+  }
+});
+
 export default router;

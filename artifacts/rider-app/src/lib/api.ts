@@ -563,6 +563,10 @@ export const api = {
   getSettings:    () => apiFetch("/settings"),
   updateSettings: (data: Record<string, unknown>) => apiFetch("/settings", { method: "PUT", body: JSON.stringify(data) }),
 
+  /* AI Assistant */
+  aiChat: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) =>
+    apiFetch("/rider/ai-chat", { method: "POST", body: JSON.stringify({ message, history }) }),
+
   /* Generic fetch — exposed on the api object so Chat (and other surfaces that
      migrated off their own apiFetch copy) can call api.apiFetch(...) and
      transparently get the auth refresh, timeout, and error-reporter integration.
