@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
+import pinoHttp from "pino-http";
+import { pinoInstance } from "./lib/logger.js";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
@@ -264,6 +266,8 @@ export function createServer() {
   });
   
   // CORS with credentials support
+  // Primary source: ALLOWED_ORIGINS (comma-separated list).
+  // Fallback: individual URL vars so no existing deploy is broken.
   app.use(cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
@@ -272,35 +276,69 @@ export function createServer() {
       if (process.env.NODE_ENV !== 'production') {
         return callback(null, true);
       }
-      // In production, restrict to configured origins
-      const allowed = [
-        ...(process.env.FRONTEND_URL || '').split(','),
-        ...(process.env.CLIENT_URL || '').split(','),
-        ...(process.env.ADMIN_BASE_URL || '').split(','),
-      ].filter(Boolean);
-      if (allowed.length === 0 || allowed.some(o => origin.startsWith(o))) {
+      // In production, read ALLOWED_ORIGINS first, then fall back to individual vars
+      const allowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+        : [
+            ...(process.env.FRONTEND_URL || '').split(','),
+            ...(process.env.CLIENT_URL || '').split(','),
+            ...(process.env.ADMIN_BASE_URL || '').split(','),
+          ].filter(Boolean);
+      if (allowedOrigins.length === 0 || allowedOrigins.some(o => origin.startsWith(o))) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Report-Signature'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Report-Signature', 'X-Request-ID'],
   }));
   
   app.use(cookieParser());
+
+  /* ── Request/response timing logger (pino-http) ─────────────────────────
+     Emits one structured JSON log line per request/response with:
+       requestId, method, url, statusCode, responseTime (ms)
+     The requestId is also propagated as x-request-id response header and
+     attached to req so Sentry / audit / downstream middleware can reference it. */
+  app.use(pinoHttp({
+    logger: pinoInstance,
+    genReqId: (req, res) => {
+      const existing = req.headers["x-request-id"] as string | undefined;
+      const id = existing || crypto.randomUUID();
+      res.setHeader("x-request-id", id);
+      return id;
+    },
+    customLogLevel: (_req, res, err) => {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    serializers: {
+      req: (req) => ({
+        method: req.method,
+        url: req.url,
+        requestId: req.id,
+      }),
+      res: (res) => ({
+        statusCode: res.statusCode,
+      }),
+    },
+  }));
+
   /* Capture raw body bytes on every JSON request so endpoints that rely on
      request signing (e.g. /api/error-reports HMAC-SHA256 verification) can
      hash the exact bytes the client signed, regardless of JSON formatting
-     differences. The buffer is small (capped at 256kb) and only retained for
-     the lifetime of the request. */
+     differences.
+     Limit: 10 KB for the API generally (oversized payloads → 413).
+     Error-report endpoint raises its own limit to 256 KB via a second parser. */
   app.use(express.json({
-    limit: "256kb",
+    limit: "10kb",
     verify: (req, _res, buf) => {
       (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
     },
   }));
-  app.use(express.urlencoded({ extended: true, limit: "256kb" }));
+  app.use(express.urlencoded({ extended: true, limit: "10kb" }));
   
   app.get("/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

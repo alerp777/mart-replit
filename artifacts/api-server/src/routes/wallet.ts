@@ -223,6 +223,7 @@ router.post("/topup", adminAuth, async (req, res) => {
     });
 
     broadcastWalletUpdate(userId, result);
+    logger.info({ event: "wallet_topup", adminId: (req as any).adminId, targetUserId: userId, amount: topupAmt, method: method || "admin_topup" }, "[audit:wallet] Admin topup completed");
     const transactions = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId));
     sendSuccess(res, { balance: result, transactions: transactions.map(mapTx) });
   } catch (e: unknown) {
@@ -401,6 +402,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
     const [freshUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (freshUser) broadcastWalletUpdate(userId, parseFloat(freshUser.walletBalance ?? "0"));
 
+    logger.info({ event: "wallet_deposit_approved", userId, amount: amt, paymentMethod, txId }, "[audit:wallet] Auto-approved deposit");
     const autoBody = { txId, status: "approved:auto", amount: amt };
     setIdempotencyResult(200, autoBody);
     sendSuccess(res, autoBody);
@@ -427,6 +429,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
       type: "wallet", icon: "wallet-outline",
     }).catch(e => logger.error("customer deposit notif insert failed:", e));
 
+    logger.info({ event: "wallet_deposit_pending", userId, amount: amt, paymentMethod, txId }, "[audit:wallet] Deposit queued for manual review");
     const pendingBody = { txId, status: "pending", amount: amt };
     setIdempotencyResult(202, pendingBody);
     sendAccepted(res, pendingBody);
@@ -699,6 +702,7 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
     }).catch(e => logger.error("receiver send notif insert failed:", e));
 
     const { receiverId: _rid, senderName: _sn, ...responseData } = result;
+    logger.info({ event: "wallet_send", senderId: senderUserId, receiverId: result.receiverId, amount: result.amount, fee: result.fee }, "[audit:wallet] P2P transfer completed");
     if (sendCacheKey) idempotencyCache.set(sendCacheKey, { state: "success", ts: Date.now(), statusCode: 200, body: responseData });
     sendSuccess(res, responseData);
   } catch (e: unknown) {

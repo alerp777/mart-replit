@@ -122,6 +122,26 @@ All credentials and secrets are managed via **Replit Secrets** (the padlock icon
 | Runtime | `NODE_ENV`, `LOG_LEVEL` |
 | Expo / Vite | `EXPO_PUBLIC_DOMAIN`, `VITE_API_BASE_URL`, `VITE_API_PROXY_TARGET` |
 
+### Security & Observability (Task #1 hardening — 2025)
+
+| Area | What changed |
+|---|---|
+| **JWT** | `ACCESS_TOKEN_TTL_SEC` reduced 3600→900 (15 min); `REFRESH_TOKEN_TTL_DAYS` reduced 90→7. `signAccessToken()` now embeds a `jti` UUID. `blacklistJti()` / `isJtiBlacklisted()` in `security.ts` use Redis to blacklist tokens on logout. |
+| **Rate limiting** | `loginLimiter` (5/60s/IP) applied to `/auth/login` and `/auth/login/username`. `otpLimiter` (3/60s/phone) applied to `/auth/send-otp` and `/auth/verify-otp`. `userApiLimiter` (100/60s/user) available for authenticated routes. |
+| **CORS** | `ALLOWED_ORIGINS` env var is the primary source (comma-separated). Falls back to `FRONTEND_URL`, `CLIENT_URL`, `ADMIN_BASE_URL` for backward compatibility. |
+| **Request logging** | `pino-http` logs every request/response with `x-request-id` header (UUID, propagated as response header). |
+| **Body limit** | Global JSON body limit reduced 256 KB→10 KB (error-report route handles its own larger limit). |
+| **Sentry** | Optional — set `SENTRY_DSN` secret to enable. Install `@sentry/node` first: `pnpm --filter @workspace/api-server add @sentry/node`. |
+| **Health endpoint** | `/api/health` now checks Redis (2-second timeout) and returns `{ status, db, redis, uptime, timestamp }`. Returns HTTP 503 when DB is down. |
+| **PII encryption** | `artifacts/api-server/src/lib/crypto/encryption.ts` — AES-256-GCM helpers. Requires `ENCRYPTION_MASTER_KEY` secret (min 16 chars). Columns not yet migrated — add `ALTER TABLE ... ADD COLUMN encrypted_* TEXT;` and migrate data when ready. |
+| **Cursor pagination** | `artifacts/api-server/src/lib/pagination/cursor.ts` — `buildCursorPage()` / `encodeCursor()` / `decodeCursor()` utilities. |
+| **Ownership guard** | `artifacts/api-server/src/middleware/verifyOwnership.ts` — `verifyOwnership("rider" | "vendor" | "wallet_transaction" | "order" | "ride" | "user")` middleware. Admins bypass. |
+| **Validation schemas** | `artifacts/api-server/src/lib/validation/schemas.ts` — consolidated Zod schemas for registration, login, OTP, orders, wallet, location, products, chat. |
+| **Audit logging** | Wallet `topup`, `deposit`, and `send` operations now emit structured `[audit:wallet]` pino log lines. Admin `withdrawal_approved` / `withdrawal_rejected` now call `addAuditEntry()`. |
+
+**New required secret:**
+- `ENCRYPTION_MASTER_KEY` — required to use PII encryption (add in Replit Secrets panel, minimum 16 characters)
+
 ### Validation and Support Scripts
 The API server includes a `check-permissions` validation script used by the Replit workflow, and the monorepo includes launcher scripts for Replit, Codespaces, VPS, and local development.
 

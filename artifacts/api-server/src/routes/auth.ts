@@ -48,7 +48,7 @@ import { clearSpoofHits } from "./rider.js";
 import { canonicalizePhone } from "@workspace/phone-utils";
 import { isAuthMethodEnabled, isAuthMethodEnabledStrict } from "@workspace/auth-utils/server";
 import { validateBody as sharedValidateBody } from "../middleware/validate.js";
-import { authLimiter } from "../middleware/rate-limit.js";
+import { authLimiter, loginLimiter, otpLimiter } from "../middleware/rate-limit.js";
 
 /* OTP rate limiting is handled per-account + per-IP inside the route handler
    using the admin-configurable settings (security_otp_max_per_phone,
@@ -709,7 +709,7 @@ router.post("/merge-account", async (req, res) => {
    POST /auth/send-otp
    Atomically upsert user by phone — one account per number.
 ───────────────────────────────────────────────────────────── */
-router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async (req, res) => {
+router.post("/send-otp", otpLimiter, verifyCaptcha, sharedValidateBody(sendOtpSchema), async (req, res) => {
   const rawPhone = req.body.phone;
   const deviceId = req.body.deviceId;
   const preferredChannel = req.body.preferredChannel;
@@ -1031,7 +1031,7 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
    POST /auth/verify-otp
    Validates the OTP, checks security settings, returns token.
 ───────────────────────────────────────────────────────────── */
-router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), async (req, res) => {
+router.post("/verify-otp", otpLimiter, verifyCaptcha, sharedValidateBody(verifyOtpSchema), async (req, res) => {
   const phone = canonicalizePhone(req.body.phone);
 
   if (!(await isValidCanonicalPhone(phone))) {
@@ -2354,8 +2354,8 @@ async function handleUnifiedLogin(req: Request, res: any) {
   });
 }
 
-router.post("/login/username", verifyCaptcha, handleUnifiedLogin);
-router.post("/login", verifyCaptcha, handleUnifiedLogin);
+router.post("/login/username", loginLimiter, verifyCaptcha, handleUnifiedLogin);
+router.post("/login", loginLimiter, verifyCaptcha, handleUnifiedLogin);
 
 /* ══════════════════════════════════════════════════════════════
    POST /auth/login/verify-otp

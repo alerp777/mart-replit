@@ -3,6 +3,30 @@ import net from 'net';
 import { execSync } from 'child_process';
 import { createServer, runStartupTasks } from "./app.js";
 
+/* ── Sentry error tracking (optional) ───────────────────────────────────────
+   Initialized before anything else so it captures startup errors too.
+   Only activates when SENTRY_DSN is set; silently skipped otherwise.
+   Install:  pnpm --filter @workspace/api-server add @sentry/node
+   Then set SENTRY_DSN in the Replit Secrets panel. */
+if (process.env.SENTRY_DSN) {
+  (async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // @ts-expect-error — @sentry/node is optional; install with: pnpm --filter @workspace/api-server add @sentry/node
+      const Sentry = await import("@sentry/node");
+      Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.NODE_ENV ?? "development",
+        tracesSampleRate: process.env.NODE_ENV === "production" ? 0.2 : 0,
+        integrations: [],
+      });
+      console.log("[sentry] Initialized successfully");
+    } catch {
+      console.warn("[sentry] @sentry/node not installed — skipping. Run: pnpm --filter @workspace/api-server add @sentry/node");
+    }
+  })().catch(() => {});
+}
+
 process.on("unhandledRejection", (reason, promise) => {
   console.error("[UnhandledRejection] at:", promise, "reason:", reason);
 });

@@ -3,22 +3,62 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { adminAuth } from "./admin-shared.js";
 import { checkSchemaDrift } from "../services/schemaDrift.service.js";
+import { redisClient } from "../lib/redis.js";
 
 const router = Router();
 
 const SERVER_EPOCH = Math.round(Date.now() / 1000 - process.uptime());
 
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   let dbStatus: "ok" | "error" = "ok";
-  try {
-    await db.execute(sql`SELECT 1`);
-  } catch {
-    dbStatus = "error";
-  }
-  res.json({
-    status: "ok",
-    uptime: process.uptime(),
+  let redisStatus: "ok" | "error" | "unavailable" = "unavailable";
+
+  const DB_TIMEOUT_MS = 2000;
+  const REDIS_TIMEOUT_MS = 2000;
+
+  await Promise.allSettled([
+    (async () => {
+      try {
+        await Promise.race([
+          db.execute(sql`SELECT 1`),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("DB timeout")), DB_TIMEOUT_MS)
+          ),
+        ]);
+        dbStatus = "ok";
+      } catch {
+        dbStatus = "error";
+      }
+    })(),
+    (async () => {
+      if (!redisClient) {
+        redisStatus = "unavailable";
+        return;
+      }
+      try {
+        await Promise.race([
+          redisClient.ping(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Redis timeout")), REDIS_TIMEOUT_MS)
+          ),
+        ]);
+        redisStatus = "ok";
+      } catch {
+        redisStatus = "error";
+      }
+    })(),
+  ]);
+
+  const overallStatus: "ok" | "degraded" | "down" =
+    dbStatus === "error" ? "down" : redisStatus === "error" ? "degraded" : "ok";
+
+  const httpStatus = dbStatus === "error" ? 503 : 200;
+
+  res.status(httpStatus).json({
+    status: overallStatus,
     db: dbStatus,
+    redis: redisStatus,
+    uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     serverEpoch: SERVER_EPOCH,
   });
@@ -36,7 +76,7 @@ router.get("/", async (req, res) => {
  * can distinguish "endpoint reachable" from "schema is clean" without relying
  * on HTTP status codes for alerting.
  */
-router.get("/schema-drift", adminAuth, async (req, res) => {
+router.get("/schema-drift", adminAuth, async (_req, res) => {
   try {
     const report = await checkSchemaDrift();
     res.json(report);

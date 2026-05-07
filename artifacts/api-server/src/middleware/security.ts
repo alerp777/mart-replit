@@ -22,8 +22,8 @@ if (!_jwtSecret || _jwtSecret.length < 32) {
 export const JWT_SECRET: string = _jwtSecret;
 
 /* Access token TTL defaults — overridden at runtime by platform settings jwt_access_ttl_sec / jwt_refresh_ttl_days */
-export const ACCESS_TOKEN_TTL_SEC = 60 * 60;
-export const REFRESH_TOKEN_TTL_DAYS = 90;
+export const ACCESS_TOKEN_TTL_SEC = 900;      /* 15 minutes */
+export const REFRESH_TOKEN_TTL_DAYS = 7;       /* 7 days */
 
 function safeInt(val: string | undefined, fallback: number, min = 1): number {
   const n = parseInt(val ?? String(fallback), 10);
@@ -341,14 +341,46 @@ export function signUserJwt(
   );
 }
 
-/** Sign a short-lived access token, embedding tokenVersion for revocation checks.
- *  TTL is read from cached platform settings (jwt_access_ttl_sec), falling back to ACCESS_TOKEN_TTL_SEC. */
+/** Sign a short-lived access token, embedding tokenVersion + jti for revocation checks.
+ *  TTL is read from cached platform settings (jwt_access_ttl_sec), falling back to ACCESS_TOKEN_TTL_SEC.
+ *  jti (JWT ID) is a random UUID used for Redis-backed blacklisting on logout. */
 export function signAccessToken(userId: string, phone: string, role: string, roles: string, tokenVersion = 0): string {
+  const jti = crypto.randomUUID();
   return jwt.sign(
-    { sub: userId, phone, role, roles, tokenVersion, type: "access" },
+    { sub: userId, phone, role, roles, tokenVersion, type: "access", jti },
     JWT_SECRET,
     { algorithm: "HS256", expiresIn: getAccessTokenTtlSec() },
   );
+}
+
+/**
+ * Blacklist a JWT by its jti in Redis.
+ * TTL is set to the remaining lifetime of the token so Redis auto-expires the entry.
+ */
+export async function blacklistJti(jti: string, expiresAt: number): Promise<void> {
+  try {
+    const { redisClient } = await import("../lib/redis.js");
+    if (!redisClient) return;
+    const ttlSec = Math.max(1, Math.ceil((expiresAt * 1000 - Date.now()) / 1000));
+    await redisClient.set(`jwt:bl:${jti}`, "1", "EX", ttlSec);
+  } catch (err) {
+    logger.warn({ jti, err: err instanceof Error ? err.message : String(err) }, "[auth] blacklistJti Redis error");
+  }
+}
+
+/**
+ * Check if a JWT jti is blacklisted.
+ * Returns false (allow) when Redis is unavailable so a Redis outage never blocks auth.
+ */
+export async function isJtiBlacklisted(jti: string): Promise<boolean> {
+  try {
+    const { redisClient } = await import("../lib/redis.js");
+    if (!redisClient) return false;
+    const result = await redisClient.exists(`jwt:bl:${jti}`);
+    return result === 1;
+  } catch {
+    return false;
+  }
 }
 
 export function sign2faChallengeToken(userId: string, phone: string, role: string, roles: string, authMethod?: string): string {

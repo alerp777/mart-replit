@@ -434,6 +434,7 @@ router.get("/withdrawal-requests", async (req, res) => {
 
 /* ── PATCH /admin/withdrawal-requests/:id/approve ─── */
 router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
+  const adminReq = req as AdminRequest;
   const { refNo, note } = req.body;
   const txId = req.params["id"]!;
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
@@ -450,6 +451,16 @@ router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
     .returning();
   if (!updated) { sendError(res, "Withdrawal already processed by another request", 409); return; }
   const amt = parseFloat(String(tx.amount));
+
+  addAuditEntry({
+    action: "withdrawal_approved",
+    ip: adminReq.adminIp || getClientIp(req),
+    details: `Withdrawal ${txId} approved for user ${tx.userId} — Rs. ${amt.toFixed(2)}${refNo ? ` (ref: ${refNo})` : ""}`,
+    result: "success",
+    adminId: adminReq.adminId,
+    adminName: adminReq.adminName,
+  });
+
   const wdLang = await getUserLanguage(tx.userId);
   const wdRef = refNo ? ` Reference: ${refNo}` : "";
   const wdNote = note ? ` Note: ${note}` : "";
@@ -464,6 +475,7 @@ router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
 
 /* ── PATCH /admin/withdrawal-requests/:id/reject ─── */
 router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
+  const adminReq = req as AdminRequest;
   const { reason } = req.body;
   const txId = req.params["id"]!;
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
@@ -493,6 +505,16 @@ router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
     throw err;
   });
   if (!txResult) { sendError(res, "Withdrawal has already been processed", 409); return; }
+
+  addAuditEntry({
+    action: "withdrawal_rejected",
+    ip: adminReq.adminIp || getClientIp(req),
+    details: `Withdrawal ${txId} rejected for user ${tx.userId} — Rs. ${amt.toFixed(2)} refunded. Reason: ${rejReason}`,
+    result: "success",
+    adminId: adminReq.adminId,
+    adminName: adminReq.adminName,
+  });
+
   const wdRejLang = await getUserLanguage(tx.userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: tx.userId,

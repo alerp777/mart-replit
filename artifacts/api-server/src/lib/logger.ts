@@ -2,7 +2,8 @@ import pino from "pino";
 
 const isProduction = process.env.NODE_ENV === "production";
 
-const _pinoLogger = pino({
+/** Raw pino instance — used by pino-http so it shares the same config. */
+export const pinoInstance = pino({
   level: process.env.LOG_LEVEL ?? "info",
   redact: [
     "req.headers.authorization",
@@ -29,4 +30,4 @@ export interface AppLogger {
   child(bindings: Record<string, unknown>): AppLogger;
 }
 
-export const logger: AppLogger = _pinoLogger as unknown as AppLogger;
+export const logger: AppLogger = pinoInstance as unknown as AppLogger;
