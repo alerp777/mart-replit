@@ -3212,6 +3212,25 @@ router.post("/ai-chat", verifyUserJwt, async (req, res) => {
 
     const result = await generateAIContent(fullPrompt);
     sendSuccess(res, { reply: result.content, source: result.source });
+
+    /* Fire a push notification to the requesting rider so they know the reply
+       arrived if they navigated away from the AI Help tab.
+       This is non-blocking — errors are swallowed so they never affect the
+       response already sent above. Only sent to the exact rider who asked,
+       preventing any cross-user leakage. */
+    const riderId = req.riderId;
+    if (riderId) {
+      const preview = result.content.length > 80
+        ? result.content.slice(0, 80) + "…"
+        : result.content;
+      sendPushToUser(riderId, {
+        title: "AI Assistant replied",
+        body: preview,
+        data: { type: "ai_chat" },
+      }).catch((pushErr: unknown) => {
+        logger.warn({ err: (pushErr as Error)?.message }, "[rider] ai-chat push failed");
+      });
+    }
   } catch (err) {
     logger.error({ err }, "rider ai-chat error");
     sendError(res, "Could not get AI response", 500);

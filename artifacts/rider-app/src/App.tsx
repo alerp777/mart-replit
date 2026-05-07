@@ -172,6 +172,7 @@ function AppRoutes() {
     const routeByData = (data: Record<string, string>) => {
       const type = data.type ?? "";
       if (type === "wallet") { navigate("/wallet"); return; }
+      if (type === "ai_chat") { navigate("/chat?tab=ai"); return; }
       if (data.rideId || data.orderId || type === "ride_request" || type === "order_request" || type === "new_order") {
         navigate("/active");
       }
@@ -216,6 +217,8 @@ function AppRoutes() {
     /* When the rider taps a push notification (background / killed app), navigate
        to the Active screen so they can accept the ride immediately. */
     const onNotificationTap = (data: Record<string, string>) => {
+      const type = data.type ?? "";
+      if (type === "ai_chat") { navigate("/chat?tab=ai"); return; }
       if (data.rideId || data.orderId) {
         navigate("/active");
       }

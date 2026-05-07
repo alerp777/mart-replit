@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearch } from "wouter";
 import { Paperclip, MoreVertical, Flag, UserX, X, Bot, Send, Trash2, Sparkles } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { useSocket } from "../lib/socket";
 import { playRequestSound, stopSound } from "../lib/notificationSound";
+import { setAiTabActive } from "../lib/push";
 
 interface OtherUser { id: string; name: string | null; ajkId: string | null; }
 interface Conversation { id: string; otherUser: OtherUser; lastMessage: { content: string } | null; unreadCount: number; lastMessageAt: string | null; }
@@ -17,6 +19,7 @@ interface AiMessage { role: "user" | "assistant"; content: string; }
 export default function Chat() {
   const { user } = useAuth();
   const { socket } = useSocket();
+  const search = useSearch();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -26,7 +29,15 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [ajkId, setAjkId] = useState("");
   const [requests, setRequests] = useState<CommRequest[]>([]);
-  const [tab, setTab] = useState<"chats" | "requests" | "search" | "ai">("chats");
+
+  /* Pre-select the AI tab when the page is opened with ?tab=ai (notification tap) */
+  const [tab, setTab] = useState<"chats" | "requests" | "search" | "ai">(() => {
+    try {
+      const params = new URLSearchParams(search);
+      if (params.get("tab") === "ai") return "ai";
+    } catch { /* ignore */ }
+    return "chats";
+  });
   const [typing, setTyping] = useState(false);
   const [callActive, setCallActive] = useState(false);
   const [callId, setCallId] = useState<string | null>(null);
@@ -40,6 +51,25 @@ export default function Chat() {
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const aiScrollRef = useRef<HTMLDivElement>(null);
+
+  /* When the URL query string changes to ?tab=ai (e.g. rider is already on
+     /chat and taps an AI reply notification), switch to the AI Help tab
+     immediately without remounting the component. */
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(search);
+      if (params.get("tab") === "ai") setTab("ai");
+    } catch { /* ignore */ }
+  }, [search]);
+
+  /* Notify push.ts whether the AI Help tab is currently the active, visible tab.
+     This lets the foreground push handler suppress redundant ai_chat banners
+     while the rider is already reading the reply. */
+  useEffect(() => {
+    const isActive = tab === "ai" && !selectedConv;
+    setAiTabActive(isActive);
+    return () => { setAiTabActive(false); };
+  }, [tab, selectedConv]);
 
   /* File upload + overflow menu state */
   const [uploading, setUploading] = useState(false);

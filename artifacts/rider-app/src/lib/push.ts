@@ -30,6 +30,23 @@ const PushPayloadSchema = z.object({
   route: z.string().optional(),
 }).passthrough();
 
+/* ─── AI tab active flag ───────────────────────────────────────────────────────
+ * Chat.tsx sets this to true whenever the rider has the AI Help tab open and
+ * in the foreground. The foreground push handler checks this flag to suppress
+ * redundant ai_chat notifications while the rider is already reading the reply.
+ * ────────────────────────────────────────────────────────────────────────── */
+let _aiTabActive = false;
+
+/** Called by Chat.tsx to register or unregister the AI Help tab as active. */
+export function setAiTabActive(active: boolean): void {
+  _aiTabActive = active;
+}
+
+/** Returns true when the rider currently has the AI Help tab open. */
+export function isAiTabActive(): boolean {
+  return _aiTabActive;
+}
+
 type PushPayload = z.infer<typeof PushPayloadSchema>;
 
 function validatePushPayload(raw: unknown): PushPayload | null {
@@ -154,6 +171,9 @@ async function registerFcmPush(
         const raw = notification.data ?? {};
         const validated = validatePushPayload(raw);
         if (validated === null) return;
+        /* Suppress ai_chat notifications while the rider already has the AI
+           Help tab open — they can see the reply directly without a banner. */
+        if (validated.type === "ai_chat" && _aiTabActive) return;
         onForegroundMessage(notification.title ?? "", notification.body ?? "");
       }).then((h) => cleanups.push(h)).catch(() => {});
     }
