@@ -17,9 +17,10 @@ if (process.env.SENTRY_DSN) {
       Sentry.init({
         dsn: process.env.SENTRY_DSN,
         environment: process.env.NODE_ENV ?? "development",
-        tracesSampleRate: process.env.NODE_ENV === "production" ? 0.2 : 0,
+        tracesSampleRate: parseFloat(process.env.SENTRY_SAMPLE_RATE ?? (process.env.NODE_ENV === "production" ? "0.2" : "0")),
         integrations: [],
       });
+      (globalThis as Record<string, unknown>)["__sentryInstance"] = Sentry;
       console.log("[sentry] Initialized successfully");
     } catch {
       console.warn("[sentry] @sentry/node not installed — skipping. Run: pnpm --filter @workspace/api-server add @sentry/node");

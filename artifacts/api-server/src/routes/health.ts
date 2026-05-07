@@ -49,15 +49,17 @@ router.get("/", async (_req, res) => {
     })(),
   ]);
 
+  const db2 = dbStatus as "ok" | "error";
+  const redis2 = redisStatus as "ok" | "error" | "unavailable";
   const overallStatus: "ok" | "degraded" | "down" =
-    dbStatus === "error" ? "down" : redisStatus === "error" ? "degraded" : "ok";
+    db2 === "error" ? "down" : redis2 === "error" ? "degraded" : "ok";
 
-  const httpStatus = dbStatus === "error" ? 503 : 200;
+  const httpStatus = db2 === "error" ? 503 : 200;
 
   res.status(httpStatus).json({
     status: overallStatus,
-    db: dbStatus,
-    redis: redisStatus,
+    db: db2,
+    redis: redis2,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     serverEpoch: SERVER_EPOCH,

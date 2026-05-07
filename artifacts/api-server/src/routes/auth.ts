@@ -26,6 +26,7 @@ import {
   revokeRefreshToken,
   revokeAllUserRefreshTokens,
   verifyUserJwt,
+  blacklistJti,
   writeAuthAuditLog,
   REFRESH_TOKEN_TTL_DAYS,
   getRefreshTokenTtlDays,
@@ -1697,17 +1698,32 @@ async function handleRefreshToken(req: Request, res: any) {
     /* Rider (explicit or legacy default) */
     cookieToken = refreshCookies[RIDER_REFRESH_COOKIE] || refreshCookies[VENDOR_REFRESH_COOKIE];
   }
-  const bodyToken = (req.body && typeof req.body === "object")
-    ? (req.body as { refreshToken?: string }).refreshToken
-    : undefined;
-  const refreshToken = cookieToken || bodyToken;
+  /* Body token fallback has been retired — refresh tokens must arrive as
+     HttpOnly cookies (rider: ajkmart_rider_refresh, vendor: ajkmart_vendor_refresh).
+     In dev mode only, a body token is accepted with a loud console warning so
+     existing test harnesses and Postman collections continue to work during
+     migration. Production enforces cookie-only strictly. */
   const ip = getClientIp(req);
 
-  if (!refreshToken || refreshToken.length < 10) {
-    res.status(400).json({ error: "Refresh token required" });
+  if (!cookieToken || cookieToken.length < 10) {
+    if (process.env.NODE_ENV !== "production") {
+      const bodyToken = (req.body && typeof req.body === "object")
+        ? (req.body as { refreshToken?: string }).refreshToken
+        : undefined;
+      if (bodyToken && bodyToken.length >= 10) {
+        console.warn("[auth/refresh] DEV ONLY: Body refresh token accepted — clients must migrate to HttpOnly cookie before going to production.");
+        return doRefresh(bodyToken, ip, req, res);
+      }
+    }
+    res.status(400).json({ error: "Refresh token required. Please log in again." });
     return;
   }
 
+  return doRefresh(cookieToken, ip, req, res);
+}
+
+/** Core refresh-token logic, extracted so cookie and dev-body paths share it. */
+async function doRefresh(refreshToken: string, ip: string, req: Request, res: any) {
   const tokenHash = hashRefreshToken(refreshToken);
   const [rt] = await db.select().from(refreshTokensTable).where(eq(refreshTokensTable.tokenHash, tokenHash)).limit(1);
 
@@ -1834,6 +1850,11 @@ router.post("/logout", async (req, res) => {
   if (raw) {
     const payload = verifyUserJwt(raw);
     if (payload) {
+      /* Blacklist this specific jti in Redis so the token is immediately revoked
+         even before tokenVersion takes effect (covers Redis-connected deployments). */
+      if (payload.jti && payload.exp) {
+        await blacklistJti(payload.jti, payload.exp).catch(() => {});
+      }
       /* Increment tokenVersion to immediately invalidate ALL outstanding access JWTs for this user */
       await db.update(usersTable)
         .set({ otpCode: null, tokenVersion: sql`token_version + 1` })

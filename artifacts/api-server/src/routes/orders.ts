@@ -6,6 +6,7 @@ import { eq, and, gte, count, sum, desc, SQL, sql, inArray, ilike } from "drizzl
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { addSecurityEvent, addAuditEntry, getClientIp, getCachedSettings, customerAuth, idorGuard } from "../middleware/security.js";
+import { verifyOwnership } from "../middleware/verifyOwnership.js";
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
 import { isInServiceZone } from "../lib/geofence.js";
@@ -599,7 +600,7 @@ router.get("/lookup/:id", customerAuth, async (req, res) => {
 });
 
 /* ── GET /orders/:id ──────────────────────────────────────────────────────── */
-router.get("/:id", customerAuth, async (req, res) => {
+router.get("/:id", customerAuth, verifyOwnership("order"), async (req, res) => {
   const userId = req.customerId!;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
   if (!order) { sendNotFound(res, "Order not found"); return; }

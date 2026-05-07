@@ -6,7 +6,7 @@ import { usersTable, walletTransactionsTable, notificationsTable, adminAccountsT
 import { eq, and, gte, sum, desc, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings, adminAuth } from "./admin.js";
-import { customerAuth, checkAvailableRateLimit, getClientIp, JWT_SECRET } from "../middleware/security.js";
+import { customerAuth, checkAvailableRateLimit, getClientIp, JWT_SECRET, addAuditEntry } from "../middleware/security.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO } from "../lib/socketio.js";
@@ -223,7 +223,7 @@ router.post("/topup", adminAuth, async (req, res) => {
     });
 
     broadcastWalletUpdate(userId, result);
-    logger.info({ event: "wallet_topup", adminId: (req as any).adminId, targetUserId: userId, amount: topupAmt, method: method || "admin_topup" }, "[audit:wallet] Admin topup completed");
+    addAuditEntry({ action: "wallet_topup", adminId: (req as any).adminId, ip: getClientIp(req), details: `Admin topup Rs. ${topupAmt} via ${method || "admin_topup"} for user ${userId}`, result: "success", affectedUserId: userId });
     const transactions = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId));
     sendSuccess(res, { balance: result, transactions: transactions.map(mapTx) });
   } catch (e: unknown) {
@@ -402,7 +402,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
     const [freshUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (freshUser) broadcastWalletUpdate(userId, parseFloat(freshUser.walletBalance ?? "0"));
 
-    logger.info({ event: "wallet_deposit_approved", userId, amount: amt, paymentMethod, txId }, "[audit:wallet] Auto-approved deposit");
+    addAuditEntry({ action: "wallet_deposit_approved", ip: getClientIp(req), details: `Auto-approved deposit Rs. ${amt} via ${paymentMethod} (txId: ${txId})`, result: "success", affectedUserId: userId });
     const autoBody = { txId, status: "approved:auto", amount: amt };
     setIdempotencyResult(200, autoBody);
     sendSuccess(res, autoBody);
@@ -429,7 +429,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
       type: "wallet", icon: "wallet-outline",
     }).catch(e => logger.error("customer deposit notif insert failed:", e));
 
-    logger.info({ event: "wallet_deposit_pending", userId, amount: amt, paymentMethod, txId }, "[audit:wallet] Deposit queued for manual review");
+    addAuditEntry({ action: "wallet_deposit_pending", ip: getClientIp(req), details: `Deposit queued for review Rs. ${amt} via ${paymentMethod} (txId: ${txId})`, result: "pending", affectedUserId: userId });
     const pendingBody = { txId, status: "pending", amount: amt };
     setIdempotencyResult(202, pendingBody);
     sendAccepted(res, pendingBody);
@@ -702,7 +702,7 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
     }).catch(e => logger.error("receiver send notif insert failed:", e));
 
     const { receiverId: _rid, senderName: _sn, ...responseData } = result;
-    logger.info({ event: "wallet_send", senderId: senderUserId, receiverId: result.receiverId, amount: result.amount, fee: result.fee }, "[audit:wallet] P2P transfer completed");
+    addAuditEntry({ action: "wallet_send", ip: getClientIp(req), details: `P2P transfer Rs. ${result.amount}${result.fee > 0 ? ` + fee Rs. ${result.fee}` : ""} to ${result.receiverId}`, result: "success", affectedUserId: senderUserId });
     if (sendCacheKey) idempotencyCache.set(sendCacheKey, { state: "success", ts: Date.now(), statusCode: 200, body: responseData });
     sendSuccess(res, responseData);
   } catch (e: unknown) {

@@ -46,6 +46,7 @@ import weatherConfigRouter from "./weather-config.js";
 import deepLinksPublicRouter from "./deep-links-public.js";
 import legalRouter from "./legal.js";
 import { adminAuth } from "./admin-shared.js";
+import { userApiLimiter } from "../middleware/rate-limit.js";
 
 const router: IRouter = Router();
 
@@ -63,9 +64,9 @@ if (process.env["ADMIN_LEGACY_AUTH_DISABLED"] !== "1") {
 }
 router.use("/users", usersRouter);
 router.use("/products", productsRouter);
-router.use("/orders", ordersRouter);
-router.use("/wallet", walletRouter);
-router.use("/rides", ridesRouter);
+router.use("/orders", userApiLimiter, ordersRouter);
+router.use("/wallet", userApiLimiter, walletRouter);
+router.use("/rides", userApiLimiter, ridesRouter);
 router.use("/locations", locationsRouter);
 router.use("/categories", categoriesRouter);
 router.use("/pharmacy-orders", pharmacyRouter);

@@ -284,7 +284,7 @@ export function createServer() {
             ...(process.env.CLIENT_URL || '').split(','),
             ...(process.env.ADMIN_BASE_URL || '').split(','),
           ].filter(Boolean);
-      if (allowedOrigins.length === 0 || allowedOrigins.some(o => origin.startsWith(o))) {
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
@@ -400,6 +400,28 @@ export function createServer() {
     }) as unknown as express.RequestHandler;
     app.use(expoProxy);
   }
+
+  /* ── Sentry error handler (must be before custom error handler) ──────────
+     When @sentry/node is installed and SENTRY_DSN is set, Sentry captures
+     unhandled Express errors with requestId + userId context attached. */
+  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const sentryMod = (globalThis as Record<string, unknown>)["__sentryInstance"] as Record<string, unknown> | undefined;
+    if (sentryMod && typeof sentryMod["withScope"] === "function") {
+      (sentryMod["withScope"] as (cb: (scope: unknown) => void) => void)((scope) => {
+        const s = scope as Record<string, (...args: unknown[]) => void>;
+        if (typeof s["setTag"] === "function") s["setTag"]("requestId", (req as unknown as Record<string, unknown>)["id"] ?? "unknown");
+        if (typeof s["setUser"] === "function") {
+          const r = req as unknown as Record<string, unknown>;
+          const uid = (r["customerId"] ?? r["riderId"] ?? r["vendorId"] ?? "anonymous") as string;
+          s["setUser"]({ id: uid });
+        }
+        if (typeof sentryMod["captureException"] === "function") {
+          (sentryMod["captureException"] as (e: unknown) => void)(err);
+        }
+      });
+    }
+    next(err);
+  });
 
   /* ── Global error handler ──────────────────────────────────────────────── */
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

@@ -323,6 +323,7 @@ export interface JwtUserPayload {
   role: string;
   roles: string;
   tokenVersion?: number;
+  jti?: string;
   exp?: number;
   iat?: number;
 }
@@ -445,6 +446,7 @@ export function verifyUserJwt(token: string): JwtUserPayload | null {
       role:         payload["role"]  as string ?? "customer",
       roles:        payload["roles"] as string ?? "customer",
       tokenVersion: typeof payload["tokenVersion"] === "number" ? payload["tokenVersion"] : undefined,
+      jti:          typeof payload["jti"] === "string" ? payload["jti"] : undefined,
       exp:          typeof payload.exp === "number" ? payload.exp : undefined,
       iat:          typeof payload.iat === "number" ? payload.iat : undefined,
     };
@@ -869,6 +871,15 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
     return;
   }
 
+  if (payload.jti) {
+    const blacklisted = await isJtiBlacklisted(payload.jti);
+    if (blacklisted) {
+      writeAuthAuditLog("auth_denied_blacklisted_jti", { userId: payload.userId, ip, metadata: { url: req.url } });
+      res.status(401).json({ success: false, error: "Session has been revoked. Please log in again.", message: "سیشن منسوخ کر دیا گیا۔ براہ کرم دوبارہ لاگ ان کریں۔" });
+      return;
+    }
+  }
+
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
   if (user.isBanned) {
@@ -920,6 +931,15 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
     writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, role: "rider" } });
     res.status(401).json({ success: false, error: "Invalid or expired session. Please log in again.", message: "غلط یا ختم شدہ سیشن۔ براہ کرم دوبارہ لاگ ان کریں۔" });
     return;
+  }
+
+  if (payload.jti) {
+    const blacklisted = await isJtiBlacklisted(payload.jti);
+    if (blacklisted) {
+      writeAuthAuditLog("auth_denied_blacklisted_jti", { userId: payload.userId, ip, metadata: { url: req.url, role: "rider" } });
+      res.status(401).json({ success: false, error: "Session has been revoked. Please log in again.", message: "سیشن منسوخ کر دیا گیا۔ براہ کرم دوبارہ لاگ ان کریں۔" });
+      return;
+    }
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
@@ -978,6 +998,15 @@ export async function anyUserAuth(req: Request, res: Response, next: NextFunctio
     writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url } });
     res.status(401).json({ success: false, error: "Invalid or expired session. Please log in again.", message: "غلط یا ختم شدہ سیشن۔ براہ کرم دوبارہ لاگ ان کریں۔" });
     return;
+  }
+
+  if (payload.jti) {
+    const blacklisted = await isJtiBlacklisted(payload.jti);
+    if (blacklisted) {
+      writeAuthAuditLog("auth_denied_blacklisted_jti", { userId: payload.userId, ip, metadata: { url: req.url } });
+      res.status(401).json({ success: false, error: "Session has been revoked. Please log in again.", message: "سیشن منسوخ کر دیا گیا۔ براہ کرم دوبارہ لاگ ان کریں۔" });
+      return;
+    }
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
@@ -1041,6 +1070,15 @@ export function requireRole(
       writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, roles: allowedRoles } });
       res.status(401).json({ success: false, error: "Invalid or expired session. Please log in again.", message: "غلط یا ختم شدہ سیشن۔ براہ کرم دوبارہ لاگ ان کریں۔" });
       return;
+    }
+
+    if (payload.jti) {
+      const blacklisted = await isJtiBlacklisted(payload.jti);
+      if (blacklisted) {
+        writeAuthAuditLog("auth_denied_blacklisted_jti", { userId: payload.userId, ip, metadata: { url: req.url } });
+        res.status(401).json({ success: false, error: "Session has been revoked. Please log in again.", message: "سیشن منسوخ کر دیا گیا۔ براہ کرم دوبارہ لاگ ان کریں۔" });
+        return;
+      }
     }
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
