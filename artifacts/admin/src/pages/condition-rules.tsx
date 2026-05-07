@@ -258,7 +258,7 @@ export default function ConditionRules() {
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
       <PageHeader
         icon={Settings2}
-        title="Rules & Settings"
+        title="Restriction Rule Config"
         subtitle={`${rules.length} rules · Mode: ${settings.mode?.replace("_", " ")}`}
         iconBgClass="bg-amber-100"
         iconColorClass="text-amber-600"

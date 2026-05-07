@@ -292,7 +292,7 @@ export default function AccountConditions() {
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
       <PageHeader
         icon={Shield}
-        title="Conditions Hub"
+        title="Account Restrictions"
         subtitle={`${stats.total} active conditions`}
         iconBgClass="bg-indigo-100"
         iconColorClass="text-indigo-600"

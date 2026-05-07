@@ -1769,6 +1769,10 @@ const translations = {
     navNotificationsLog: "Notifications Log",
     navMessagingKpis: "Messaging KPIs",
     navConditionsHubGroup: "Conditions",
+    navAdminActionLog: "Admin Action Log",
+    navCommunications: "Communications",
+    navAccountRestrictions: "Account Restrictions",
+    navRestrictionRuleConfig: "Restriction Rule Config",
   },
 
   ur: {
@@ -3515,6 +3519,10 @@ const translations = {
     navNotificationsLog: "نوٹیفکیشنز لاگ",
     navMessagingKpis: "میسیجنگ KPI",
     navConditionsHubGroup: "کنڈیشنز",
+    navAdminActionLog: "ایڈمن ایکشن لاگ",
+    navCommunications: "مواصلت",
+    navAccountRestrictions: "اکاؤنٹ پابندیاں",
+    navRestrictionRuleConfig: "پابندی قاعدہ کنفیگ",
   },
 
   roman: {
@@ -5261,6 +5269,10 @@ const translations = {
     navNotificationsLog: "Notifications Log",
     navMessagingKpis: "Messaging KPIs",
     navConditionsHubGroup: "Conditions",
+    navAdminActionLog: "Admin Action Log",
+    navCommunications: "Communications",
+    navAccountRestrictions: "Account Restrictions",
+    navRestrictionRuleConfig: "Restriction Rule Config",
   },
 
   en_roman: {} as Record<string, string>,
