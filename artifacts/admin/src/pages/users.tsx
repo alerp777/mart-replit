@@ -1643,6 +1643,7 @@ export default function Users() {
 
   const [walletUser, setWalletUser] = useState<any>(null);
   const [deleteUser, setDeleteUser] = useState<any>(null);
+  const [pendingBlockToggle, setPendingBlockToggle] = useState<{ id: string; val: boolean } | null>(null);
   const [activityUser, setActivityUser] = useState<any>(null);
   const [securityUser, setSecurityUser] = useState<any>(null);
   const [rejectUser, setRejectUser]     = useState<any>(null);
@@ -2152,13 +2153,7 @@ export default function Users() {
                             ) : (
                               <div className="flex items-center justify-center gap-2">
                                 <Switch checked={user.isActive} onCheckedChange={(val) => {
-                                  securityUpdateMutation.mutate({ id: user.id, isActive: val }, {
-                                    onSuccess: () => {
-                                      if (val) toast({ title: "User unblocked", description: "Account has been re-activated." });
-                                      else toast({ title: "User blocked", description: "Account has been deactivated." });
-                                    },
-                                    onError: (err: any) => toast({ title: "Update failed", description: err.message, variant: "destructive" }),
-                                  });
+                                  setPendingBlockToggle({ id: user.id, val });
                                 }} />
                                 {user.isActive ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
                               </div>
@@ -2282,6 +2277,27 @@ export default function Users() {
         title="Delete User"
         description={`Are you sure you want to permanently delete "${deleteUser?.name || deleteUser?.phone}"? This cannot be undone.`}
         confirmLabel="Delete User"
+      />
+
+      <SensitiveActionDialog
+        open={!!pendingBlockToggle}
+        onClose={() => setPendingBlockToggle(null)}
+        onConfirm={() => {
+          if (!pendingBlockToggle) return;
+          const { id, val } = pendingBlockToggle;
+          securityUpdateMutation.mutate({ id, isActive: val }, {
+            onSuccess: () => {
+              if (val) toast({ title: "User unblocked", description: "Account has been re-activated." });
+              else toast({ title: "User blocked", description: "Account has been deactivated." });
+            },
+            onError: (err: Error) => toast({ title: "Update failed", description: err.message, variant: "destructive" }),
+          });
+        }}
+        title={pendingBlockToggle?.val ? "Unblock User" : "Block User"}
+        description={pendingBlockToggle?.val
+          ? "This will re-activate the user's account. Confirm your identity to proceed."
+          : "This will deactivate the user's account and prevent them from logging in. Confirm your identity to proceed."}
+        confirmLabel={pendingBlockToggle?.val ? "Unblock User" : "Block User"}
       />
 
       {activityUser && <UserActivityModal userId={activityUser.id} userName={activityUser.name || activityUser.phone} user={activityUser} onClose={() => setActivityUser(null)} />}

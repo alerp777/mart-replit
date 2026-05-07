@@ -7,6 +7,7 @@ import { PwaInstallBanner } from "@/components/PwaInstallBanner";
 import { OnlineStatusBanner } from "@/components/OnlineStatusBanner";
 import { useLanguage } from "@/lib/useLanguage";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorRetry } from "@/components/ui/ErrorRetry";
 import { initSentry, setSentryUser } from "@/lib/sentry";
 import { initAnalytics, identifyUser } from "@/lib/analytics";
 import { registerPush } from "@/lib/push";
@@ -158,19 +159,6 @@ function useLoaderTimeout(loading: boolean, ms = LOADER_TIMEOUT_MS): boolean {
   return timedOut;
 }
 
-function StuckLoaderFallback({ label = "Loading timed out" }: { label?: string }) {
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center p-8">
-      <p className="text-sm text-muted-foreground max-w-xs">{label}</p>
-      <button
-        onClick={() => window.location.reload()}
-        className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:opacity-90 transition-opacity"
-      >
-        Reload page
-      </button>
-    </div>
-  );
-}
 
 function ProtectedRoute({
   component: Component,
@@ -211,7 +199,7 @@ function ProtectedRoute({
 
   if (state.isLoading) {
     if (authTimedOut) {
-      return <StuckLoaderFallback label="The authentication check is taking too long. This may be a connection issue." />;
+      return <ErrorRetry variant="page" title="Authentication taking too long" description="The authentication check is taking too long. This may be a connection issue." />;
     }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -294,7 +282,7 @@ function RootRedirect() {
 
   if (state.isLoading) {
     if (rootTimedOut) {
-      return <StuckLoaderFallback label="Session restore is taking too long. Please reload to try again." />;
+      return <ErrorRetry variant="page" title="Session restore taking too long" description="Session restore is taking too long. Please reload to try again." />;
     }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -443,7 +431,7 @@ function IntegrationsInit() {
           initSentry({
             dsn: integ.sentryDsn,
             environment: integ.sentryEnvironment || "production",
-            sampleRate: integ.sentrySampleRate ?? 1.0,
+            sampleRate: integ.sentrySampleRate ?? 0.2,
             tracesSampleRate: integ.sentryTracesSampleRate ?? 0.1,
           });
         }

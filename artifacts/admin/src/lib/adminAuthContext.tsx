@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 
 export interface AdminUser {
   id: string;
@@ -138,10 +139,11 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         title: 'Your session expires in 1 minute',
         description: 'Click "Stay logged in" to continue without interruption.',
         duration: 55_000,
-        action: {
-          altText: 'Stay logged in',
-          onClick: () => { refreshFn().catch(() => {}); },
-        } as any,
+        action: (
+          <ToastAction altText="Stay logged in" onClick={() => { refreshFn().catch(() => {}); }}>
+            Stay logged in
+          </ToastAction>
+        ),
       });
     }, msLeft);
   }, []);

@@ -249,6 +249,7 @@ export default function RolesPermissionsPage() {
   const [confirmRemoveRole, setConfirmRemoveRole] = useState(false);
   const [sensitiveDeleteRole, setSensitiveDeleteRole] = useState(false);
   const [sensitiveSavePerms, setSensitiveSavePerms] = useState(false);
+  const [sensitiveRoleToggle, setSensitiveRoleToggle] = useState<{ adminId: string; roleId: string } | null>(null);
 
   /* ── Single-dialog create role ──────────────────────────────────── */
   const [showCreateRole, setShowCreateRole] = useState(false);
@@ -597,7 +598,7 @@ export default function RolesPermissionsPage() {
           activeAdminId={activeAdminId}
           activeAdminEffective={activeAdminEffective}
           onSelect={selectAdmin}
-          onToggleRole={toggleAdminRole}
+          onToggleRole={(adminId, roleId) => setSensitiveRoleToggle({ adminId, roleId })}
           canManage={canManage}
           loading={adminsLoading}
           search={adminSearch}
@@ -981,6 +982,18 @@ export default function RolesPermissionsPage() {
         title="Save permission changes"
         description={activeRole ? `You are about to update permissions for "${activeRole.name}". Confirm your identity to proceed.` : ""}
         confirmLabel="Save Permissions"
+      />
+
+      {/* ── Admin role toggle — requires password re-entry ───────────────── */}
+      <SensitiveActionDialog
+        open={!!sensitiveRoleToggle}
+        onClose={() => setSensitiveRoleToggle(null)}
+        onConfirm={() => {
+          if (sensitiveRoleToggle) toggleAdminRole(sensitiveRoleToggle.adminId, sensitiveRoleToggle.roleId);
+        }}
+        title="Change Admin Role"
+        description="You are about to change this admin's role assignments. This will immediately affect their access. Confirm your identity to proceed."
+        confirmLabel="Apply Role Change"
       />
     </div>
   );

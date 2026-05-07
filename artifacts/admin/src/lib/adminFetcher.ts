@@ -57,24 +57,17 @@ function timeoutSignal(ms: number, externalSignal?: AbortSignal): AbortSignal {
 }
 
 /**
- * If an error is a TimeoutError (or an AbortError caused by our timeout),
+ * If the error is specifically a TimeoutError thrown by our internal timer,
  * show a toast so the user knows the request hung.
+ * External aborts (e.g. component unmount via AbortController) are silently
+ * swallowed — they are not user-facing errors.
  */
-function handleTimeoutError(err: unknown, retry?: () => void): void {
-  const isTimeout =
-    err instanceof TimeoutError ||
-    (err instanceof DOMException && err.name === 'AbortError' && err.message.includes('timeout'));
-  if (!isTimeout) return;
+function handleTimeoutError(err: unknown): void {
+  if (!(err instanceof TimeoutError)) return;
   toast({
     title: 'Request timed out',
-    description: 'Check your connection and try again.',
+    description: 'The server took too long to respond. Check your connection and try again.',
     variant: 'destructive',
-    action: retry
-      ? {
-          altText: 'Retry',
-          onClick: retry,
-        } as any
-      : undefined,
   });
 }
 
@@ -150,8 +143,14 @@ export async function fetchAdmin(
         credentials: 'include', // Include cookies (refresh_token, csrf_token)
       });
     } catch (err) {
-      if (err instanceof TimeoutError || (err instanceof DOMException && err.name === 'AbortError')) {
-        handleTimeoutError(new TimeoutError());
+      // Only show toast for our own timeout — not for external aborts
+      // (e.g. component unmount). The AbortController abort reason is set to
+      // a TimeoutError instance, so we can distinguish them cleanly.
+      if (err instanceof TimeoutError) {
+        handleTimeoutError(err);
+      } else if (err instanceof DOMException && err.name === 'AbortError') {
+        const reason = (signal as AbortSignal & { reason?: unknown }).reason;
+        if (reason instanceof TimeoutError) handleTimeoutError(reason);
       }
       throw err;
     }
