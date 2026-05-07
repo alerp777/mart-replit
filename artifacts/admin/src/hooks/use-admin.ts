@@ -588,6 +588,17 @@ export const useHealthDashboard = () => {
   });
 };
 
+export const useUnlockAdminIpLockout = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) =>
+      fetcher(`/system/admin-ip-lockouts/${encodeURIComponent(key)}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-health-dashboard"] });
+    },
+  });
+};
+
 // Platform Settings
 export const usePlatformSettings = () => {
   return useQuery({
@@ -1647,7 +1658,7 @@ export const useOtpWhitelist = () =>
      into every consumer of `entries`. */
   useQuery<OtpWhitelistResponse>({
     queryKey: ["admin-otp-whitelist"],
-    queryFn: () => fetcher("/admin/whitelist"),
+    queryFn: () => fetcher("/whitelist"),
     refetchInterval: 30_000,
   });
 
@@ -1658,7 +1669,7 @@ export const useAddOtpWhitelist = () => {
        router — every "Add" call would 404. Aligned with the route in
        `artifacts/api-server/src/routes/admin/otp.ts`. */
     mutationFn: (data: AddOtpWhitelistInput) =>
-      fetcher("/admin/whitelist", { method: "POST", body: JSON.stringify(data) }),
+      fetcher("/whitelist", { method: "POST", body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-otp-whitelist"] }),
   });
 };
@@ -1667,7 +1678,7 @@ export const useUpdateOtpWhitelist = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: UpdateOtpWhitelistInput) =>
-      fetcher(`/admin/whitelist/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      fetcher(`/whitelist/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-otp-whitelist"] }),
   });
 };

@@ -152,33 +152,33 @@ export default function FAQManagementPage() {
 
   const { data, isLoading, refetch } = useQuery<{ faqs: FAQ[]; total: number }>({
     queryKey: ["admin-faqs"],
-    queryFn: () => apiFetch("/admin/faqs"),
+    queryFn: () => apiFetch("/faqs"),
   });
 
   const { toast } = useToast();
 
   const createMut = useMutation({
-    mutationFn: (body: typeof EMPTY_FORM) => apiFetch("/admin/faqs", { method: "POST", body: JSON.stringify(body) }),
+    mutationFn: (body: typeof EMPTY_FORM) => apiFetch("/faqs", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-faqs"] }); setEditFaq(null); },
     onError: (e: Error) => toast({ title: "Create failed", description: e.message, variant: "destructive" }),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...body }: typeof EMPTY_FORM & { id: string }) =>
-      apiFetch(`/admin/faqs/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      apiFetch(`/faqs/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-faqs"] }); setEditFaq(null); },
     onError: (e: Error) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => apiFetch(`/admin/faqs/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => apiFetch(`/faqs/${id}`, { method: "DELETE" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-faqs"] }); setDeleteId(null); },
     onError: (e: Error) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const toggleMut = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      apiFetch(`/admin/faqs/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
+      apiFetch(`/faqs/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-faqs"] }),
     onError: (e: Error) => toast({ title: "Toggle failed", description: e.message, variant: "destructive" }),
   });

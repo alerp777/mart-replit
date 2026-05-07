@@ -60,20 +60,20 @@ export default function SupportChatPage() {
 
   const { data: convsData, isLoading: convsLoading, refetch: refetchConvs } = useQuery({
     queryKey: ["admin-support-conversations"],
-    queryFn: () => apiFetch("/admin/support-chat/conversations"),
+    queryFn: () => apiFetch("/support-chat/conversations"),
     refetchInterval: 15000,
   });
 
   const { data: msgsData, isLoading: msgsLoading } = useQuery({
     queryKey: ["admin-support-messages", selectedUserId],
-    queryFn: () => apiFetch(`/admin/support-chat/conversations/${selectedUserId}`),
+    queryFn: () => apiFetch(`/support-chat/conversations/${selectedUserId}`),
     enabled: !!selectedUserId,
     refetchInterval: false,
   });
 
   const resolveMut = useMutation({
     mutationFn: ({ userId, resolved }: { userId: string; resolved: boolean }) =>
-      apiFetch(`/admin/support-chat/conversations/${userId}/resolve`, {
+      apiFetch(`/support-chat/conversations/${userId}/resolve`, {
         method: "PATCH",
         body: JSON.stringify({ resolved }),
       }),

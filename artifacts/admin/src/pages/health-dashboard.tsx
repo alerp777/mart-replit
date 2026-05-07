@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity, RefreshCw, Server, Satellite, ShieldCheck,
@@ -6,12 +6,13 @@ import {
   Info, Cpu, Clock,
   Navigation, Eye, EyeOff, MessageSquare, Zap,
   Bell, BellOff, Mail, Slack,
+  Lock, LockOpen, UserX, Shield, Timer, Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useHealthDashboard } from "@/hooks/use-admin";
+import { useHealthDashboard, useUnlockAdminIpLockout } from "@/hooks/use-admin";
 import { Link } from "wouter";
 
 /* ── helpers ── */
@@ -491,9 +492,234 @@ export default function HealthDashboard() {
         )}
       </Section>
 
+      {/* ── Login Security & Lockout Monitor ── */}
+      <LoginSecuritySection data={d} isLoading={isLoading} />
+
       {/* auto-refresh notice */}
       <p className="text-center text-xs text-slate-600">
         Auto-refreshes every 30 seconds · Last updated {dataUpdatedAt > 0 ? updatedAgo(new Date(dataUpdatedAt).toISOString()) : "—"}
+      </p>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Login Security sub-component (extracted to keep the main component readable)
+───────────────────────────────────────────────────────────────────────────── */
+function LoginSecuritySection({ data: d, isLoading }: { data: any; isLoading: boolean }) {
+  const unlock = useUnlockAdminIpLockout();
+  const [unlocking, setUnlocking] = useState<string | null>(null);
+
+  const lockouts: any[] = d?.authLockouts?.adminIpLockouts ?? [];
+  const attempts: any[] = d?.authLockouts?.adminIpAttemptsInProgress ?? [];
+  const accountLockouts: any[] = d?.authLockouts?.accountLockouts ?? [];
+  const cfg = d?.authLockouts?.config ?? { maxAttempts: 5, lockoutMinutes: 15 };
+
+  const totalThreats = lockouts.length + accountLockouts.length;
+  const hasWarning = lockouts.length > 0 || accountLockouts.length > 5;
+
+  async function handleUnlock(key: string) {
+    setUnlocking(key);
+    try {
+      await unlock.mutateAsync(key);
+    } finally {
+      setUnlocking(null);
+    }
+  }
+
+  return (
+    <Section title="Login Security" icon={Shield}>
+      {isLoading ? (
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => <SkeletonBlock key={i} className="h-9" />)}
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {/* ── Summary row ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <SummaryTile
+              icon={Lock}
+              label="Locked IPs"
+              value={lockouts.length}
+              alert={lockouts.length > 0}
+            />
+            <SummaryTile
+              icon={Timer}
+              label="IPs with failures"
+              value={attempts.length}
+              alert={attempts.length > 0}
+              warning
+            />
+            <SummaryTile
+              icon={UserX}
+              label="Account lockouts"
+              value={accountLockouts.length}
+              alert={accountLockouts.length > 5}
+              warning={accountLockouts.length > 0 && accountLockouts.length <= 5}
+            />
+            <SummaryTile
+              icon={ShieldCheck}
+              label="Max attempts"
+              value={`${cfg.maxAttempts} / ${cfg.lockoutMinutes}m`}
+              alert={false}
+            />
+          </div>
+
+          {/* ── All-clear state ── */}
+          {!hasWarning && lockouts.length === 0 && accountLockouts.length === 0 && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+              <LockOpen size={14} className="text-emerald-400 shrink-0" />
+              <span className="text-sm text-emerald-300">No active lockouts — login attempts look normal</span>
+            </div>
+          )}
+
+          {/* ── Admin IP lockouts ── */}
+          {lockouts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Lock size={13} className="text-red-400" />
+                <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">
+                  Locked Admin IPs ({lockouts.length})
+                </span>
+              </div>
+              <div className="rounded-xl border border-red-500/20 bg-red-500/5 overflow-hidden divide-y divide-red-500/10">
+                {lockouts.map((item: any) => (
+                  <div key={item.key} className="flex items-center justify-between px-4 py-3 gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-mono text-slate-200 truncate">{item.key}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {item.attempts} failed attempt{item.attempts !== 1 ? "s" : ""}
+                        {" · "}locked since {new Date(item.lockedSince).toLocaleTimeString()}
+                        {" · "}
+                        <span className="text-red-400 font-medium">{item.minutesLeft}m remaining</span>
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={unlocking === item.key}
+                      onClick={() => handleUnlock(item.key)}
+                      className="shrink-0 border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200 text-xs gap-1.5"
+                    >
+                      {unlocking === item.key ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <LockOpen size={12} />
+                      )}
+                      Unlock
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── IPs with ongoing failures (not yet locked) ── */}
+          {attempts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Timer size={13} className="text-amber-400" />
+                <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">
+                  IPs with Recent Failures ({attempts.length})
+                </span>
+              </div>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 overflow-hidden divide-y divide-amber-500/10">
+                {attempts.map((item: any) => (
+                  <div key={item.key} className="flex items-center justify-between px-4 py-3 gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-mono text-slate-200 truncate">{item.key}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {item.attempts}/{cfg.maxAttempts} failed attempt{item.attempts !== 1 ? "s" : ""}
+                        {" · "}last at {new Date(item.lastAttempt).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {[...Array(cfg.maxAttempts)].map((_: any, i: number) => (
+                        <span
+                          key={i}
+                          className={`w-2 h-2 rounded-full ${i < item.attempts ? "bg-amber-400" : "bg-slate-700"}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Account (phone) lockouts ── */}
+          {accountLockouts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <UserX size={13} className="text-orange-400" />
+                <span className="text-xs font-semibold text-orange-400 uppercase tracking-wide">
+                  Locked User Accounts ({accountLockouts.length})
+                </span>
+              </div>
+              <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 overflow-hidden divide-y divide-orange-500/10 max-h-48 overflow-y-auto">
+                {accountLockouts.slice(0, 20).map((item: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between px-4 py-2.5 gap-3">
+                    <p className="text-sm font-mono text-slate-300 truncate">{item.phone}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-slate-500">{item.attempts} attempts</span>
+                      {item.minutesLeft > 0 && (
+                        <Badge variant="outline" className="text-xs border-orange-500/40 text-orange-300 bg-orange-500/10">
+                          {item.minutesLeft}m left
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {accountLockouts.length > 20 && (
+                  <div className="px-4 py-2 text-xs text-slate-500 text-center">
+                    +{accountLockouts.length - 20} more — view all in Security Dashboard
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Footer links ── */}
+          <div className="pt-2 border-t border-slate-700/40 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Link href="/security">
+              <Button variant="ghost" size="sm" className="text-xs text-slate-400 hover:text-slate-200 px-0">
+                Open Security Dashboard →
+              </Button>
+            </Link>
+            {totalThreats > 0 && (
+              <span className="text-xs text-slate-600">
+                Lockout window: {cfg.lockoutMinutes} min · Threshold: {cfg.maxAttempts} attempts
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function SummaryTile({
+  icon: Icon, label, value, alert, warning,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+  alert: boolean;
+  warning?: boolean;
+}) {
+  const color = alert
+    ? "text-red-400 bg-red-500/10 border-red-500/20"
+    : warning
+    ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+    : "text-slate-400 bg-slate-800/40 border-slate-700/40";
+  return (
+    <div className={`rounded-xl border p-3 ${color}`}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Icon size={13} />
+        <span className="text-xs font-medium">{label}</span>
+      </div>
+      <p className={`text-lg font-semibold ${alert ? "text-red-300" : warning ? "text-amber-300" : "text-slate-200"}`}>
+        {value}
       </p>
     </div>
   );

@@ -26,6 +26,7 @@ import {
   sendUserNotification, logger,
   ORDER_NOTIF_KEYS, RIDE_NOTIF_KEYS, PHARMACY_NOTIF_KEYS, PARCEL_NOTIF_KEYS,
   checkAdminLoginLockout, recordAdminLoginFailure, resetAdminLoginAttempts,
+  adminLoginAttempts, ADMIN_MAX_ATTEMPTS, ADMIN_LOCKOUT_TIME,
   addAuditEntry, addSecurityEvent, getClientIp,
   signAdminJwt, verifyAdminJwt, invalidateSettingsCache, getCachedSettings,
   ADMIN_TOKEN_TTL_HRS, verifyTotpToken, verifyAdminSecret,
@@ -854,6 +855,21 @@ router.delete("/login-lockouts/:phone", adminAuth, async (req, res) => {
     result: "success",
   });
   sendSuccess(res, { unlocked: phone });
+});
+
+/* ── DELETE /admin/system/admin-ip-lockouts/:key — clear an admin IP lockout ── */
+router.delete("/system/admin-ip-lockouts/:key", adminAuth, async (req: AdminRequest, res) => {
+  const key = decodeURIComponent(String(req.params["key"]));
+  const existed = adminLoginAttempts.has(key);
+  adminLoginAttempts.delete(key);
+  addAuditEntry({
+    action: "admin_ip_lockout_cleared",
+    ip: getClientIp(req),
+    adminId: req.adminId!,
+    details: `Admin manually cleared IP lockout for: ${key}`,
+    result: "success",
+  });
+  sendSuccess(res, { cleared: key, existed });
 });
 
 /* ── GET /admin/security-dashboard — quick security overview ── */
@@ -2817,7 +2833,7 @@ function formatUptime(sec: number): string {
   return `${m}m ${s}s`;
 }
 
-router.get("/health-dashboard", async (_req, res) => {
+router.get("/system/health-dashboard", async (_req, res) => {
   const s = await getPlatformSettings();
   const now = new Date();
 
@@ -2909,6 +2925,39 @@ router.get("/health-dashboard", async (_req, res) => {
   if (staleRiders > 0)
     issues.push({ level: "info", message: `${staleRiders} rider(s) in the live table have not pinged in the last 5 minutes` });
 
+  /* ── Auth lockout monitoring ── */
+  const nowMs = Date.now();
+  const adminIpLockouts: { key: string; attempts: number; minutesLeft: number; lockedSince: string }[] = [];
+  const adminIpAttempts: { key: string; attempts: number; lastAttempt: string }[] = [];
+  for (const [key, v] of adminLoginAttempts.entries()) {
+    const remaining = ADMIN_LOCKOUT_TIME - (nowMs - v.lastAttempt);
+    if (v.count >= ADMIN_MAX_ATTEMPTS && remaining > 0) {
+      adminIpLockouts.push({
+        key,
+        attempts: v.count,
+        minutesLeft: Math.ceil(remaining / 60_000),
+        lockedSince: new Date(v.lastAttempt).toISOString(),
+      });
+    } else if (v.count > 0 && (nowMs - v.lastAttempt) < ADMIN_LOCKOUT_TIME) {
+      adminIpAttempts.push({
+        key,
+        attempts: v.count,
+        lastAttempt: new Date(v.lastAttempt).toISOString(),
+      });
+    }
+  }
+  const accountLockoutsRaw = await getActiveLockouts();
+  const accountLockouts = accountLockoutsRaw.map((l: { key: string; attempts: number; lockedUntil: string | null; minutesLeft: number | null }) => ({
+    phone: l.key,
+    attempts: l.attempts,
+    minutesLeft: l.minutesLeft ?? 0,
+    lockedUntil: l.lockedUntil ?? null,
+  }));
+  if (adminIpLockouts.length > 0)
+    issues.push({ level: "warning", message: `${adminIpLockouts.length} admin IP${adminIpLockouts.length > 1 ? "s" : ""} currently locked out due to repeated failed login attempts` });
+  if (accountLockouts.length > 5)
+    issues.push({ level: "warning", message: `${accountLockouts.length} user accounts currently locked out — possible brute-force attack` });
+
   sendSuccess(res, {
     generatedAt: now.toISOString(),
     server: {
@@ -2946,6 +2995,15 @@ router.get("/health-dashboard", async (_req, res) => {
       emailConfigured:  (s["integration_email"] ?? "off") === "on" && Boolean(s["smtp_admin_alert_email"]?.trim()),
       slackConfigured:  Boolean(s["health_alert_slack_webhook"]?.trim()),
       alertEmail:       s["smtp_admin_alert_email"]?.trim() ?? "",
+    },
+    authLockouts: {
+      adminIpLockouts,
+      adminIpAttemptsInProgress: adminIpAttempts,
+      accountLockouts,
+      config: {
+        maxAttempts: ADMIN_MAX_ATTEMPTS,
+        lockoutMinutes: Math.round(ADMIN_LOCKOUT_TIME / 60_000),
+      },
     },
   });
 });

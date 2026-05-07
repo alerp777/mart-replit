@@ -305,7 +305,7 @@ export default function AppManagement() {
 
   const { data: rnData, isLoading: rnLoading, refetch: refetchRn } = useQuery({
     queryKey: ["admin-release-notes"],
-    queryFn: () => fetcher("/admin/release-notes"),
+    queryFn: () => fetcher("/release-notes"),
   });
 
   const admins: AdminAccount[] = adminsData?.accounts || [];
@@ -330,8 +330,8 @@ export default function AppManagement() {
   /* ── Release Notes Mutations ── */
   const saveRn = useMutation({
     mutationFn: async (body: any) => {
-      if (editingRn) return fetcher(`/admin/release-notes/${editingRn.id}`, { method: "PATCH", body: JSON.stringify(body) });
-      return fetcher("/admin/release-notes", { method: "POST", body: JSON.stringify(body) });
+      if (editingRn) return fetcher(`/release-notes/${editingRn.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      return fetcher("/release-notes", { method: "POST", body: JSON.stringify(body) });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-release-notes"] });
@@ -343,7 +343,7 @@ export default function AppManagement() {
   });
 
   const deleteRn = useMutation({
-    mutationFn: (id: string) => fetcher(`/admin/release-notes/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => fetcher(`/release-notes/${id}`, { method: "DELETE" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-release-notes"] }); toast({ title: "Release note deleted" }); },
   });
 

@@ -172,7 +172,7 @@ export default function OtpControl() {
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
-      const d = await api("GET", "/admin/otp/status");
+      const d = await api("GET", "/otp/status");
       if (d?.data) setStatus(d.data);
     } catch (err) {
       console.warn("[OtpControl] Status load failed:", err);
@@ -184,7 +184,7 @@ export default function OtpControl() {
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
     try {
-      const d = await api("GET", "/admin/otp/audit?page=1");
+      const d = await api("GET", "/otp/audit?page=1");
       if (d?.data?.entries) {
         const bypass = (d.data.entries as AuditRow[]).filter(e =>
           e.event === "login_otp_bypass" || e.event === "login_global_otp_bypass" || e.event === "otp_send_bypassed"
@@ -211,7 +211,7 @@ export default function OtpControl() {
   /* ── Global suspension actions ── */
   const suspend = async (mins: number) => {
     if (!mins || mins <= 0) return;
-    const d = await api("POST", "/admin/otp/disable", { minutes: mins });
+    const d = await api("POST", "/otp/disable", { minutes: mins });
     if (d?.data) {
       toast({ title: "OTP Suspended", description: `All OTPs suspended for ${mins} minute(s).` });
       loadStatus(); loadAudit();
@@ -221,7 +221,7 @@ export default function OtpControl() {
   };
 
   const restore = async () => {
-    await api("DELETE", "/admin/otp/disable");
+    await api("DELETE", "/otp/disable");
     toast({ title: "OTPs Restored", description: "Global OTP suspension lifted." });
     loadStatus(); loadAudit();
   };
@@ -276,7 +276,7 @@ export default function OtpControl() {
 
   const grantBypass = async (userId: string, mins: number) => {
     try {
-      const d = await api("POST", `/admin/users/${userId}/otp/bypass`, { minutes: mins });
+      const d = await api("POST", `/users/${userId}/otp/bypass`, { minutes: mins });
       if (d?.data?.bypassUntil) {
         toast({ title: "Bypass Granted", description: `OTP bypass active for ${mins} minute(s).` });
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, otpBypassUntil: d.data.bypassUntil } : u));
@@ -300,7 +300,7 @@ export default function OtpControl() {
   };
 
   const cancelBypass = async (userId: string) => {
-    await api("DELETE", `/admin/users/${userId}/otp/bypass`);
+    await api("DELETE", `/users/${userId}/otp/bypass`);
     toast({ title: "Bypass Removed" });
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, otpBypassUntil: null } : u));
     loadStatus();
