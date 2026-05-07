@@ -437,8 +437,26 @@ export default function Chat() {
 
       {/* Message Input */}
       {selectedConv && (
-        <div className="p-4 border-t bg-white">
-          <div className="flex gap-2">
+        <div className="border-t bg-white">
+          {/* Quick reply chips */}
+          <div className="px-4 pt-3 pb-1 flex gap-2 overflow-x-auto scrollbar-hide">
+            {[
+              "Order is being prepared 🍳",
+              "Ready for pickup 📦",
+              "On its way! 🛵",
+              "Thank you for your order! 🙏",
+              "Will be ready in 10 mins ⏱",
+            ].map(reply => (
+              <button
+                key={reply}
+                onClick={() => { setInput(reply); }}
+                className="flex-shrink-0 h-8 px-3 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold rounded-full hover:bg-orange-100 active:scale-95 transition whitespace-nowrap"
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 px-4 pb-4 pt-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}

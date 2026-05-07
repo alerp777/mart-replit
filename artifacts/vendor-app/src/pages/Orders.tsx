@@ -25,6 +25,7 @@ const TAB_KEYS: { key: string; labelKey: TranslationKey; icon: string }[] = [
   { key: "new",       labelKey: "newLabel",  icon: "🔔" },
   { key: "active",    labelKey: "active",    icon: "🍳" },
   { key: "delivered", labelKey: "done",      icon: "✅" },
+  { key: "cancelled", labelKey: "cancelled", icon: "❌" },
   { key: "all",       labelKey: "all",       icon: "📋" },
 ];
 
