@@ -19,17 +19,7 @@ if (rawPort && (Number.isNaN(port) || port <= 0)) {
 const basePath = process.env.BASE_PATH || "/rider/";
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8080";
 
-export default defineConfig(async ({ mode }) => {
-  /* Build-time HMAC secret check — warn loudly if the secret is absent in
-     production so it is never silently missing in a deployed build. */
-  if (mode === "production" && !process.env.VITE_ERROR_REPORT_HMAC_SECRET) {
-    console.warn(
-      "\n[vite:rider] WARNING: VITE_ERROR_REPORT_HMAC_SECRET is not set.\n" +
-      "  Error reports from the rider app will NOT be sent (HMAC signing disabled).\n" +
-      "  Set this variable in your build environment before deploying.\n"
-    );
-  }
-
+export default defineConfig(async ({ mode: _mode }) => {
   return {
   base: basePath,
   plugins: [
