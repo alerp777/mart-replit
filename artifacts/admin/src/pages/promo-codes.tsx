@@ -15,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
 
 const EMPTY_FORM = {
@@ -355,6 +354,8 @@ export default function PromoCodes() {
         title={tDual("deletePromoCodeTitle", language)}
         description={tDual("actionCannotBeUndone", language)}
         confirmLabel="Delete"
+        actionType="delete_promo_code"
+        targetId={deleteId ?? undefined}
       />
     </div>
   );

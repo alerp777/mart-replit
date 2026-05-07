@@ -202,7 +202,7 @@ export async function fetchAdmin(
           : retryReason instanceof TimeoutError ? retryReason
           : null;
         if (timeoutErr) {
-          handleTimeoutError(timeoutErr);
+          handleTimeoutError(timeoutErr, () => { fetchAdmin(endpoint, options).catch(() => {}); });
           throw timeoutErr;
         }
         console.error('Token refresh failed:', err);
@@ -302,7 +302,7 @@ export async function fetchAdminAbsolute(
         : retryReason instanceof TimeoutError ? retryReason
         : null;
       if (timeoutErr) {
-        handleTimeoutError(timeoutErr);
+        handleTimeoutError(timeoutErr, () => { fetchAdminAbsolute(path, options).catch(() => {}); });
         throw timeoutErr;
       }
       console.error('Token refresh failed (absolute):', err);
@@ -388,7 +388,7 @@ export async function fetchAdminAbsoluteResponse(
         : retryReason instanceof TimeoutError ? retryReason
         : null;
       if (timeoutErr) {
-        handleTimeoutError(timeoutErr);
+        handleTimeoutError(timeoutErr, () => { fetchAdminAbsoluteResponse(path, options).catch(() => {}); });
         throw timeoutErr;
       }
       console.error('Token refresh failed (response):', err);

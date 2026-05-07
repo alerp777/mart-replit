@@ -479,6 +479,8 @@ export default function Withdrawals() {
         title="Approve Withdrawal"
         description={`Approving ${fc(Number(sensitiveApproveTarget?.amount))} payout to ${sensitiveApproveTarget?.user?.name || sensitiveApproveTarget?.user?.phone || "this user"}. Confirm your identity to proceed.`}
         confirmLabel="Proceed to Approve"
+        actionType="approve_withdrawal"
+        targetId={sensitiveApproveTarget?.id}
       />
     </div>
   );

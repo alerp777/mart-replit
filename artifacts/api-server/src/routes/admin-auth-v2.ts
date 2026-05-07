@@ -904,10 +904,15 @@ router.post(
 
     if (!adminId) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
-    const password = (req.body as { password?: string }).password ?? '';
+    const body = req.body as { password?: string; actionType?: string; targetId?: string };
+    const password = body.password ?? '';
     if (!password) {
       res.status(400).json({ error: 'password is required' }); return;
     }
+    const actionContext = {
+      ...(body.actionType ? { actionType: body.actionType } : {}),
+      ...(body.targetId   ? { targetId:   body.targetId   } : {}),
+    };
 
     const [admin] = await db
       .select()
@@ -921,10 +926,7 @@ router.post(
       const ADMIN_SECRET = await getAdminSecret();
       if (ADMIN_SECRET && password === ADMIN_SECRET) {
         await logAdminAudit('admin_sensitive_action_verified', {
-          adminId,
-          ip,
-          userAgent,
-          result: 'success',
+          adminId, ip, userAgent, result: 'success', ...actionContext,
         });
         res.json({ success: true }); return;
       }
@@ -934,20 +936,13 @@ router.post(
     const { verifyAdminSecret } = await import('../services/password.js');
     if (!verifyAdminSecret(password, admin.secret)) {
       await logAdminAudit('admin_sensitive_action_verify_failed', {
-        adminId,
-        ip,
-        userAgent,
-        result: 'failure',
-        reason: 'incorrect password',
+        adminId, ip, userAgent, result: 'failure', reason: 'incorrect password', ...actionContext,
       });
       res.status(401).json({ error: 'Incorrect password' }); return;
     }
 
     await logAdminAudit('admin_sensitive_action_verified', {
-      adminId,
-      ip,
-      userAgent,
-      result: 'success',
+      adminId, ip, userAgent, result: 'success', ...actionContext,
     });
 
     res.json({ success: true });

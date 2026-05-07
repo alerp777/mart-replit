@@ -404,6 +404,8 @@ export default function FlashDealsPage() {
         title="Delete Flash Deal"
         description="This flash deal will be permanently removed. This action cannot be undone."
         confirmLabel="Delete Deal"
+        actionType="delete_flash_deal"
+        targetId={deletingDealId ?? undefined}
       />
 
     </div>

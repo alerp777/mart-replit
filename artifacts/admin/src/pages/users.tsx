@@ -2277,6 +2277,8 @@ export default function Users() {
         title="Delete User"
         description={`Are you sure you want to permanently delete "${deleteUser?.name || deleteUser?.phone}"? This cannot be undone.`}
         confirmLabel="Delete User"
+        actionType="delete_user"
+        targetId={deleteUser?.id}
       />
 
       <SensitiveActionDialog
@@ -2298,6 +2300,8 @@ export default function Users() {
           ? "This will re-activate the user's account. Confirm your identity to proceed."
           : "This will deactivate the user's account and prevent them from logging in. Confirm your identity to proceed."}
         confirmLabel={pendingBlockToggle?.val ? "Unblock User" : "Block User"}
+        actionType={pendingBlockToggle?.val ? "unblock_user" : "block_user"}
+        targetId={pendingBlockToggle?.id}
       />
 
       {activityUser && <UserActivityModal userId={activityUser.id} userName={activityUser.name || activityUser.phone} user={activityUser} onClose={() => setActivityUser(null)} />}

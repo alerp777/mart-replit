@@ -972,6 +972,8 @@ export default function RolesPermissionsPage() {
         title="Delete role"
         description={activeRole ? `Delete role "${activeRole.name}"? This cannot be undone.` : ""}
         confirmLabel="Delete Role"
+        actionType="delete_role"
+        targetId={activeRole?.id}
       />
 
       {/* ── Save permissions — requires password re-entry ─────────────── */}
@@ -982,6 +984,8 @@ export default function RolesPermissionsPage() {
         title="Save permission changes"
         description={activeRole ? `You are about to update permissions for "${activeRole.name}". Confirm your identity to proceed.` : ""}
         confirmLabel="Save Permissions"
+        actionType="save_permissions"
+        targetId={activeRole?.id}
       />
 
       {/* ── Admin role toggle — requires password re-entry ───────────────── */}
@@ -994,6 +998,8 @@ export default function RolesPermissionsPage() {
         title="Change Admin Role"
         description="You are about to change this admin's role assignments. This will immediately affect their access. Confirm your identity to proceed."
         confirmLabel="Apply Role Change"
+        actionType="toggle_admin_role"
+        targetId={sensitiveRoleToggle?.adminId}
       />
     </div>
   );

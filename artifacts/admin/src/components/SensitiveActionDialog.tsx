@@ -13,6 +13,10 @@ export interface SensitiveActionDialogProps {
   cancelLabel?: string;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
+  /** Machine-readable action name sent to the audit log (e.g. "delete_user"). */
+  actionType?: string;
+  /** Primary entity ID the action targets, included in the audit log. */
+  targetId?: string | number;
 }
 
 /**
@@ -44,6 +48,8 @@ export function SensitiveActionDialog({
   cancelLabel = "Cancel",
   onConfirm,
   onClose,
+  actionType,
+  targetId,
 }: SensitiveActionDialogProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +79,11 @@ export function SensitiveActionDialog({
     try {
       await fetchAdmin("/auth/verify-password", {
         method: "POST",
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({
+          password,
+          ...(actionType ? { actionType } : {}),
+          ...(targetId !== undefined ? { targetId: String(targetId) } : {}),
+        }),
       });
       // Verification succeeded — proceed with the original action
       await onConfirm();
