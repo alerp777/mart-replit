@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 import {
   ClipboardList, RefreshCw, Search, Filter, ChevronLeft, ChevronRight,
   AlertCircle, CheckCircle2, XCircle, Loader2, CalendarDays, User, ShieldCheck,
@@ -87,7 +88,7 @@ export default function AuditLogsPage() {
     search: search   || undefined,
   };
 
-  const { data, isLoading, isError, refetch, isFetching } = useAuditLog(params);
+  const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useAuditLog(params);
 
   const entries: any[]     = data?.entries || [];
   const total: number      = data?.total || 0;
@@ -119,15 +120,18 @@ export default function AuditLogsPage() {
         iconBgClass="bg-indigo-100"
         iconColorClass="text-indigo-600"
         actions={
-          <Button
-            variant="outline"
-            className="h-9 rounded-xl gap-2"
-            onClick={() => refetch()}
-            disabled={isFetching}
-          >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <LastUpdated dataUpdatedAt={dataUpdatedAt} onRefresh={refetch} isRefreshing={isFetching} />
+            <Button
+              variant="outline"
+              className="h-9 rounded-xl gap-2"
+              onClick={() => refetch()}
+              disabled={isFetching}
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         }
       />
 

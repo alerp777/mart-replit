@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
@@ -457,7 +458,7 @@ export default function ErrorMonitor() {
   if (dateFrom) params.set("dateFrom", new Date(dateFrom).toISOString());
   if (dateTo) params.set("dateTo", new Date(dateTo + "T23:59:59").toISOString());
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["error-reports", activeTab, page, sourceApp, severity, errorType, resolutionMethod, dateFrom, dateTo],
     queryFn: () => fetcher(`/error-reports?${params}`),
     refetchInterval: 30000,
@@ -1206,6 +1207,9 @@ export default function ErrorMonitor() {
         iconBgClass="bg-red-100"
         iconColorClass="text-red-600"
         actions={<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {activeTab !== "customers" && activeTab !== "filescan" && dataUpdatedAt > 0 && (
+            <LastUpdated dataUpdatedAt={dataUpdatedAt} onRefresh={refetch} isRefreshing={isLoading} />
+          )}
           {activeTab !== "filescan" && <>
           <button
             onClick={() => setShowAutoResolvePanel(!showAutoResolvePanel)}

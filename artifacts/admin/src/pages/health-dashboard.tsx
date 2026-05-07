@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useHealthDashboard, useUnlockAdminIpLockout } from "@/hooks/use-admin";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 import { Link } from "wouter";
 
 /* ── helpers ── */
@@ -151,11 +152,7 @@ export default function HealthDashboard() {
         icon={Activity}
       >
         <div className="flex items-center gap-3">
-          {dataUpdatedAt > 0 && (
-            <span className="text-xs text-slate-500 hidden sm:block">
-              Updated {updatedAgo(new Date(dataUpdatedAt).toISOString())}
-            </span>
-          )}
+          <LastUpdated dataUpdatedAt={dataUpdatedAt} onRefresh={handleRefresh} isRefreshing={isFetching} />
           <Button
             variant="outline"
             size="sm"

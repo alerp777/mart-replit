@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageHeader } from "@/components/shared";
-import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter, CheckCircle, XCircle, Clock, Upload, X, ImageIcon } from "lucide-react";
+import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter, CheckCircle, XCircle, Clock, Upload, X, ImageIcon, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, usePendingProducts, useApproveProduct, useRejectProduct, useCategories } from "@/hooks/use-admin";
 import { formatCurrency } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -143,13 +144,18 @@ export default function Products() {
     }
   };
 
-  const openAdd = () => {
+  const openAdd = useCallback(() => {
     setEditingId(null);
     setFormData({ ...EMPTY_FORM });
     setImagePreview("");
     setCategorySearch("");
     setIsFormOpen(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("admin:new-item", openAdd);
+    return () => window.removeEventListener("admin:new-item", openAdd);
+  }, [openAdd]);
 
   const openEdit = (prod: ProductRow) => {
     setEditingId(prod.id);
@@ -232,12 +238,37 @@ export default function Products() {
   const pendingProducts = pendingData?.products || [];
   const vendors = [...new Set(products.filter((p: ProductRow) => p.vendorName).map((p: ProductRow) => p.vendorName as string))];
   const q = search.toLowerCase();
-  const filtered = products.filter((p: ProductRow) =>
-    (typeFilter === "all" || p.type === typeFilter) &&
-    (stockFilter === "all" || (stockFilter === "in" ? p.inStock : !p.inStock)) &&
-    (!vendorFilter || (p.vendorName || "").toLowerCase().includes(vendorFilter.toLowerCase())) &&
-    (p.name.toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q))
-  );
+  const [sortKey, setSortKey] = useState<"name" | "category" | "price" | "vendor" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = useCallback((key: "name" | "category" | "price" | "vendor") => {
+    setSortKey(prev => {
+      if (prev === key) { setSortDir(d => d === "asc" ? "desc" : "asc"); return key; }
+      setSortDir("asc");
+      return key;
+    });
+  }, []);
+
+  const filtered = useMemo(() => {
+    const base = products.filter((p: ProductRow) =>
+      (typeFilter === "all" || p.type === typeFilter) &&
+      (stockFilter === "all" || (stockFilter === "in" ? p.inStock : !p.inStock)) &&
+      (!vendorFilter || (p.vendorName || "").toLowerCase().includes(vendorFilter.toLowerCase())) &&
+      (p.name.toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q))
+    );
+    if (!sortKey) return base;
+    return [...base].sort((a: ProductRow, b: ProductRow) => {
+      let av: string | number = "";
+      let bv: string | number = "";
+      if (sortKey === "name")     { av = (a.name || "").toLowerCase();       bv = (b.name || "").toLowerCase(); }
+      if (sortKey === "category") { av = (a.category || "").toLowerCase();   bv = (b.category || "").toLowerCase(); }
+      if (sortKey === "price")    { av = a.price ?? 0;                       bv = b.price ?? 0; }
+      if (sortKey === "vendor")   { av = (a.vendorName || "").toLowerCase(); bv = (b.vendorName || "").toLowerCase(); }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [products, typeFilter, stockFilter, vendorFilter, q, sortKey, sortDir]);
 
   const martCount = products.filter((p: ProductRow) => p.type === "mart").length;
   const foodCount = products.filter((p: ProductRow) => p.type === "food").length;
@@ -711,7 +742,7 @@ export default function Products() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-foreground truncate">{p.name}</p>
                       <Badge variant={p.type === "food" ? "default" : "secondary"} className="text-[10px] uppercase">{p.type}</Badge>
-                      {!p.inStock && <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">Out of Stock</Badge>}
+                      {!p.inStock && <StatusBadge status="inactive" label="Out of Stock" size="xs" />}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 capitalize">{p.category}{p.vendorName ? ` · ${p.vendorName}` : ""}</p>
                     <p className="font-bold text-foreground text-sm mt-1">{formatCurrency(p.price)}</p>
@@ -747,10 +778,23 @@ export default function Products() {
               <Table className="min-w-[600px]">
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead>{T("product")}</TableHead>
-                    <TableHead>{T("category")}</TableHead>
-                    <TableHead>{T("price")}</TableHead>
-                    <TableHead>{T("vendor")}</TableHead>
+                    {([
+                      { key: "name",     label: T("product") },
+                      { key: "category", label: T("category") },
+                      { key: "price",    label: T("price") },
+                      { key: "vendor",   label: T("vendor") },
+                    ] as const).map(col => (
+                      <TableHead key={col.key} className="cursor-pointer select-none group" onClick={() => toggleSort(col.key)}>
+                        <div className="flex items-center gap-1">
+                          {col.label}
+                          {sortKey === col.key
+                            ? sortDir === "asc"
+                              ? <ArrowUp className="w-3 h-3 text-primary" />
+                              : <ArrowDown className="w-3 h-3 text-primary" />
+                            : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
+                        </div>
+                      </TableHead>
+                    ))}
                     <TableHead>{T("stock")}</TableHead>
                     <TableHead className="text-right">{T("actions")}</TableHead>
                   </TableRow>
@@ -781,20 +825,26 @@ export default function Products() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{p.vendorName || "—"}</TableCell>
                         <TableCell>
-                          <button
-                            onClick={() => toggleStock(p)}
-                            disabled={updateMutation.isPending}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-                              p.inStock
-                                ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                                : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                            }`}
-                          >
-                            {p.inStock
-                              ? <><ToggleRight className="w-4 h-4" /> In Stock</>
-                              : <><ToggleLeft  className="w-4 h-4" /> Out of Stock</>
-                            }
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <StatusBadge
+                              status={p.inStock ? "active" : "inactive"}
+                              label={p.inStock ? "In Stock" : "Out of Stock"}
+                              size="xs"
+                            />
+                            {canWrite && (
+                              <button
+                                onClick={() => toggleStock(p)}
+                                disabled={updateMutation.isPending}
+                                className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
+                                title={p.inStock ? "Mark out of stock" : "Mark in stock"}
+                              >
+                                {p.inStock
+                                  ? <ToggleRight className="w-4 h-4 text-green-600" />
+                                  : <ToggleLeft  className="w-4 h-4 text-red-600" />
+                                }
+                              </button>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">

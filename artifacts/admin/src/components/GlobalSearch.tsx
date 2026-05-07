@@ -54,6 +54,12 @@ const TYPE_CONFIG = {
   rider: { icon: Bike,        label: "Riders", color: "text-green-600", bg: "bg-green-50" },
 };
 
+const SEE_ALL_PATHS: Record<"user" | "order" | "rider", string> = {
+  user:  "/users",
+  order: "/orders",
+  rider: "/riders",
+};
+
 interface GlobalSearchProps {
   inputRef?: React.RefObject<HTMLInputElement>;
   onClose?: () => void;
@@ -236,6 +242,13 @@ export function GlobalSearch({ inputRef: externalRef, onClose }: GlobalSearchPro
                         </button>
                       );
                     })}
+                    <button
+                      type="button"
+                      className={cn("w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-1", cfg.color, "hover:underline opacity-70 hover:opacity-100")}
+                      onClick={() => { navigate(`${SEE_ALL_PATHS[type]}?search=${encodeURIComponent(debouncedQuery)}`); close(); }}
+                    >
+                      See all results →
+                    </button>
                   </div>
                 );
               })}

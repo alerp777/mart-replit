@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -242,6 +243,7 @@ export default function RolesPermissionsPage() {
   const [roles, setRoles] = useState<RbacRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(0);
   const [activeRoleId, setActiveRoleId] = useState<string | null>(null);
   const [draftPerms, setDraftPerms] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -302,6 +304,7 @@ export default function RolesPermissionsPage() {
       const rls: RbacRole[] = rolesRes?.data?.roles ?? rolesRes?.roles ?? [];
       setCatalog(cat);
       setRoles(rls);
+      setLastUpdatedAt(Date.now());
       if (rls.length && !activeRoleId) {
         setActiveRoleId(rls[0]!.id);
         setDraftPerms(new Set(rls[0]!.permissions));
@@ -544,7 +547,8 @@ export default function RolesPermissionsPage() {
         iconBgClass="bg-indigo-100"
         iconColorClass="text-indigo-700"
         actions={
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <LastUpdated dataUpdatedAt={lastUpdatedAt} onRefresh={() => { void (tab === "roles" ? reload() : loadAdmins()); }} isRefreshing={loading || adminsLoading} />
             <Button variant="outline" onClick={() => { void (tab === "roles" ? reload() : loadAdmins()); }} disabled={loading || adminsLoading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${(loading || adminsLoading) ? "animate-spin" : ""}`} /> Reload
             </Button>

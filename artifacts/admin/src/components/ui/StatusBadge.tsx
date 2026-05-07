@@ -28,12 +28,17 @@ const STATUS_MAP: Record<string, { label: string; classes: string }> = {
   offline:      { label: "Offline",      classes: "bg-red-100 text-red-700 border-red-200" },
   expired:      { label: "Expired",      classes: "bg-red-100 text-red-700 border-red-200" },
 
+  searching:         { label: "Searching",          classes: "bg-amber-100 text-amber-700 border-amber-200" },
+  bargaining:        { label: "Bargaining",         classes: "bg-amber-100 text-amber-700 border-amber-200" },
+
   assigned:          { label: "Assigned",          classes: "bg-blue-100 text-blue-700 border-blue-200" },
   processing:        { label: "Processing",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
   picked_up:         { label: "Picked Up",          classes: "bg-blue-100 text-blue-700 border-blue-200" },
   on_the_way:        { label: "On the Way",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
   dispatched:        { label: "Dispatched",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
   accepted:          { label: "Accepted",           classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  in_transit:        { label: "In Transit",         classes: "bg-blue-100 text-blue-700 border-blue-200" },
+  arrived:           { label: "Arrived",            classes: "bg-blue-100 text-blue-700 border-blue-200" },
 
   credit:            { label: "Credit",             classes: "bg-green-100 text-green-700 border-green-200" },
   debit:             { label: "Debit",              classes: "bg-red-100 text-red-700 border-red-200" },

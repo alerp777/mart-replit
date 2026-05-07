@@ -78,7 +78,6 @@ import PromotionsHub from "@/pages/promotions-hub";
 import SupportChat from "@/pages/support-chat";
 import FaqManagement from "@/pages/faq-management";
 const ErrorMonitor = lazy(() => import("@/pages/error-monitor"));
-const Communication = lazy(() => import("@/pages/communication"));
 const Communications = lazy(() => import("@/pages/communications"));
 import Loyalty from "@/pages/loyalty";
 import WalletTransfers from "@/pages/wallet-transfers";

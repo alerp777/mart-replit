@@ -610,6 +610,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                         </Tooltip>
                       );
                     }
+                    const description = NAV_DESCRIPTIONS[item.href];
+                    if (description) {
+                      return (
+                        <Tooltip key={item.href} delayDuration={600}>
+                          <TooltipTrigger asChild>{itemNode}</TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[220px]">
+                            <div className="text-xs font-semibold leading-tight">{T(item.nameKey)}</div>
+                            <div className="text-[11px] opacity-80 leading-snug mt-0.5">{description}</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }
                     return <React.Fragment key={item.href}>{itemNode}</React.Fragment>;
                   })}
                 </div>
@@ -911,7 +923,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <ErrorBoundary fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="bg-white rounded-2xl p-6 text-center shadow-xl"><p className="font-semibold text-red-600">Command palette unavailable</p></div></div>}>
+        <ErrorBoundary fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="bg-white rounded-2xl p-6 text-center shadow-xl"><p className="font-semibold text-red-600">{T("errorCommandPalette" as TranslationKey)}</p></div></div>}>
           <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
         </ErrorBoundary>
 

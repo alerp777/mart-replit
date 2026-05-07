@@ -1,11 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard, Clock, ClipboardList,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
-  Download, CalendarDays, Percent, Truck, Gavel,
+  Download, CalendarDays, Percent, Truck, Gavel, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { PageHeader, StatCard, FilterBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
@@ -13,6 +14,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension, useDeliveryAccess, useAddWhitelistEntry, useDeleteWhitelistEntry, useDeliveryAccessRequests, useResolveDeliveryRequest } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { fetcher } from "@/lib/api";
 import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -169,6 +171,45 @@ export default function Vendors() {
   const [walletModal,  setWalletModal]  = useState<any>(null);
   const [suspendModal, setSuspendModal] = useState<any>(null);
   const [commModal,    setCommModal]    = useState<any>(null);
+  const [inviteOpen,   setInviteOpen]   = useState(false);
+  const [invitePhone,  setInvitePhone]  = useState("");
+  const [inviteEmail,  setInviteEmail]  = useState("");
+  const [inviteStore,  setInviteStore]  = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
+  const invitePhoneRef = useRef<HTMLInputElement>(null);
+
+  const openInvite = useCallback(() => {
+    setInvitePhone("");
+    setInviteEmail("");
+    setInviteStore("");
+    setInviteOpen(true);
+    setTimeout(() => invitePhoneRef.current?.focus(), 80);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("admin:new-item", openInvite);
+    return () => window.removeEventListener("admin:new-item", openInvite);
+  }, [openInvite]);
+
+  const handleInviteVendor = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invitePhone.trim() && !inviteEmail.trim()) {
+      toast({ title: "Phone or email required", variant: "destructive" });
+      return;
+    }
+    setInviteSending(true);
+    try {
+      await fetcher("/vendors/invite", {
+        method: "POST",
+        body: JSON.stringify({ phone: invitePhone.trim() || undefined, email: inviteEmail.trim() || undefined, storeName: inviteStore.trim() || undefined }),
+      });
+      toast({ title: "Invitation sent", description: `Vendor invite sent to ${invitePhone.trim() || inviteEmail.trim()}` });
+      setInviteOpen(false);
+    } catch (err: any) {
+      toast({ title: "Failed to invite vendor", description: err?.message || "Please try again", variant: "destructive" });
+    }
+    setInviteSending(false);
+  }, [invitePhone, inviteEmail, inviteStore, toast]);
 
   const settings: any[] = settingsData?.settings || [];
   const vendorCommissionPct = parseFloat(settings.find((s: any) => s.key === "vendor_commission_pct")?.value ?? String(PLATFORM_DEFAULTS.vendorCommissionPct));
@@ -215,12 +256,34 @@ export default function Vendors() {
   const suspendedVendors = vendors.filter((v: any) => (!v.isActive || v.isBanned) && v.approvalStatus !== "pending").length;
 
   const getStatusBadge = (v: any) => {
-    if (v.isBanned)   return <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">Banned</Badge>;
-    if (v.approvalStatus === "pending") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 text-[10px]">Pending Approval</Badge>;
-    if (!v.isActive)  return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">Blocked</Badge>;
-    if (v.storeIsOpen) return <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">Open</Badge>;
-    return <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-[10px]">Closed</Badge>;
+    if (v.isBanned)             return <StatusBadge status="banned"           size="xs" />;
+    if (v.approvalStatus === "pending") return <StatusBadge status="pending_approval" size="xs" />;
+    if (!v.isActive)            return <StatusBadge status="inactive"         size="xs" label="Blocked" />;
+    if (v.storeIsOpen)          return <StatusBadge status="active"           size="xs" label="Open" />;
+    return <StatusBadge status="offline" size="xs" label="Closed" />;
   };
+
+  const [sortKey, setSortKey] = useState<"storeName" | "totalRevenue" | "walletBalance" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleVendorSort = useCallback((key: "storeName" | "totalRevenue" | "walletBalance") => {
+    setSortKey(prev => {
+      if (prev === key) { setSortDir(d => d === "asc" ? "desc" : "asc"); return key; }
+      setSortDir("asc");
+      return key;
+    });
+  }, []);
+
+  const sortedFiltered = useMemo(() => {
+    if (!sortKey) return filtered;
+    return [...filtered].sort((a: any, b: any) => {
+      let av = sortKey === "storeName" ? (a.storeName || "").toLowerCase() : (a[sortKey] ?? 0);
+      let bv = sortKey === "storeName" ? (b.storeName || "").toLowerCase() : (b[sortKey] ?? 0);
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filtered, sortKey, sortDir]);
 
   const qc = useQueryClient();
   const handlePullRefresh = useCallback(async () => {
@@ -286,6 +349,24 @@ export default function Vendors() {
             </Select>
           }
         />
+        <div className="flex items-center gap-2 flex-wrap">
+          {([
+            { key: "storeName" as const,      label: "Name" },
+            { key: "totalRevenue" as const,   label: "Revenue" },
+            { key: "walletBalance" as const,  label: "Wallet" },
+          ]).map(col => (
+            <button
+              key={col.key}
+              onClick={() => toggleVendorSort(col.key)}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${sortKey === col.key ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"}`}
+            >
+              {col.label}
+              {sortKey === col.key
+                ? sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                : <ArrowUpDown className="w-3 h-3 opacity-50" />}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
           <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
@@ -309,7 +390,7 @@ export default function Vendors() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filtered.map((v: any) => (
+          {sortedFiltered.map((v: any) => (
             <Card key={v.id} className="rounded-2xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -449,6 +530,59 @@ export default function Vendors() {
       {walletModal  && <WalletAdjustModal mode="vendor" subject={walletModal} onClose={() => setWalletModal(null)} />}
       {suspendModal && <SuspendModal vendor={suspendModal} onClose={() => setSuspendModal(null)} />}
       {commModal    && <CommissionModal vendor={commModal} defaultPct={vendorCommissionPct} onClose={() => setCommModal(null)} />}
+
+      {/* Invite Vendor Dialog (triggered by N shortcut) */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="sm:max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Store className="w-4 h-4 text-orange-600" /> Invite Vendor
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleInviteVendor} className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Phone Number</label>
+              <Input
+                ref={invitePhoneRef}
+                type="tel"
+                placeholder="+92 300 1234567"
+                value={invitePhone}
+                onChange={e => setInvitePhone(e.target.value)}
+                className="h-9 rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Email (optional)</label>
+              <Input
+                type="email"
+                placeholder="vendor@example.com"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                className="h-9 rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Store Name (optional)</label>
+              <Input
+                type="text"
+                placeholder="Store name"
+                value={inviteStore}
+                onChange={e => setInviteStore(e.target.value)}
+                className="h-9 rounded-xl"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button type="button" variant="outline" className="flex-1 h-9 rounded-xl" onClick={() => setInviteOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1 h-9 rounded-xl" disabled={inviteSending}>
+                {inviteSending ? <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                {inviteSending ? "Sending…" : "Send Invite"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </PullToRefresh>
   );
 }

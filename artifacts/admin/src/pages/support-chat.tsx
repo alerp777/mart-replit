@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { io, type Socket } from "socket.io-client";
 import { PageHeader } from "@/components/shared";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 import { apiAbsoluteFetch } from "@/lib/api";
 
@@ -58,7 +59,7 @@ export default function SupportChatPage() {
   const socketRef = useRef<Socket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: convsData, isLoading: convsLoading, refetch: refetchConvs } = useQuery({
+  const { data: convsData, isLoading: convsLoading, refetch: refetchConvs, dataUpdatedAt: convsUpdatedAt } = useQuery({
     queryKey: ["admin-support-conversations"],
     queryFn: () => apiFetch("/support-chat/conversations"),
     refetchInterval: 15000,
@@ -156,6 +157,7 @@ export default function SupportChatPage() {
         subtitle="Manage live customer conversations"
         iconBgClass="bg-blue-100"
         iconColorClass="text-blue-600"
+        actions={<LastUpdated dataUpdatedAt={convsUpdatedAt} onRefresh={refetchConvs} isRefreshing={convsLoading} />}
       />
       <div className="flex flex-1 min-h-0 bg-gray-50">
       {/* Sidebar */}

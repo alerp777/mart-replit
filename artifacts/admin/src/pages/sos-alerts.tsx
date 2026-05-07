@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 import { AlertTriangle, RefreshCw, Phone, MapPin, Car, Clock, CheckCircle, CheckCheck, X } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/shared";
 import { fetcher, getAdminAccessToken } from "@/lib/api";
@@ -276,6 +277,7 @@ function AlertCard({
 
 export default function SosAlerts() {
   const [alerts, setAlerts] = useState<SosAlert[]>([]);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(0);
   const [total, setTotal]   = useState(0);
   const [activeCount, setActiveCount] = useState(0);
   const [page, setPage]     = useState(1);
@@ -312,6 +314,7 @@ export default function SosAlerts() {
     } catch (err) {
       console.error("[SOS Alerts] Load failed:", err);
     }
+    setLastUpdatedAt(Date.now());
     setLoading(false);
   }, [tab]);
 
@@ -423,6 +426,7 @@ export default function SosAlerts() {
               <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
               {wsConnected ? "Live" : "Connecting..."}
             </div>
+            <LastUpdated dataUpdatedAt={lastUpdatedAt} onRefresh={() => loadAlerts(1)} isRefreshing={loading} />
             <Button size="sm" variant="outline" onClick={() => loadAlerts(1)} disabled={loading} className="h-9 text-xs gap-1.5">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               Refresh

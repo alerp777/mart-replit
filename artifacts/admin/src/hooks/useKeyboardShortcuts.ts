@@ -8,7 +8,6 @@ interface KeyboardShortcutsOptions {
 }
 
 const NEW_ITEM_ROUTES: Record<string, string> = {
-  "/orders": "new-order",
   "/users": "new-user",
   "/riders": "new-rider",
   "/products": "new-product",

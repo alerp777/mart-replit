@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Toggle, Field, SecretInput } from "@/components/AdminShared";
+import { LastUpdated } from "@/components/ui/LastUpdated";
 
 type SecTab = "auth" | "authmethods" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud" | "dataexports";
 
@@ -78,6 +79,7 @@ export default function SecurityPage() {
   const [savedValues, setSavedValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(0);
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
   const [secTab, setSecTab] = useState<SecTab>("auth");
 
@@ -116,6 +118,7 @@ export default function SecurityPage() {
       setSavedValues(vals);
       setDirtyKeys(new Set());
       setIpWhitelistError(null);
+      setLastUpdatedAt(Date.now());
     } catch (e: unknown) {
       toast({ title: "Failed to load settings", description: (e as Error).message, variant: "destructive" });
     }
@@ -402,7 +405,8 @@ export default function SecurityPage() {
         iconBgClass="bg-red-100"
         iconColorClass="text-red-600"
         actions={
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <LastUpdated dataUpdatedAt={lastUpdatedAt} onRefresh={loadSettings} isRefreshing={loading} />
             <Button variant="outline" onClick={() => { loadSettings(); toast({ title: "Reloaded" }); }} disabled={loading} className="h-9 rounded-xl gap-2">
               <RefreshCw className="w-4 h-4" /> Reset
             </Button>

@@ -185,7 +185,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { nameKey: "navBroadcast" as TranslationKey,             href: "/communications?tab=send",    icon: Radio,          requirePermission: "support.broadcast.send" },
       { nameKey: "navNotificationsLog" as TranslationKey,     href: "/communications?tab=log",     icon: BellRing,       requirePermission: "support.broadcast.send" },
-      { nameKey: "navSmsGateways" as TranslationKey,          href: "/communications?tab=kpis",    icon: MessageSquare,  requirePermission: "support.broadcast.send" },
+      { nameKey: "navSmsGateways" as TranslationKey,          href: "/communications?tab=settings", icon: MessageSquare,  requirePermission: "support.broadcast.send" },
       { nameKey: "navInboxChatModeration" as TranslationKey,  href: "/support-chat",               icon: MessageCircle,  requirePermission: "support.chat.view" },
       { nameKey: "navFaqMgmt",                                href: "/faq-management",             icon: HelpCircle,     requirePermission: "content.products.view" },
     ],

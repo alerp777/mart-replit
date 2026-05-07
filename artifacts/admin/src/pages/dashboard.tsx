@@ -1,9 +1,9 @@
-import { useCallback, useState, useId } from "react";
+import { useCallback, useState, useId, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, StatCard } from "@/components/shared";
-import { Users, ShoppingBag, Car, Pill, Box, Settings, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard, Loader2, X, Zap } from "lucide-react";
+import { Users, ShoppingBag, Car, Pill, Box, Settings, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard, Loader2, X, Zap, UserCheck, Search } from "lucide-react";
 import { Link } from "wouter";
-import { useStats, useRevenueTrend, useLeaderboard } from "@/hooks/use-admin";
+import { useStats, useRevenueTrend, useLeaderboard, useRides, useRiders, useAdminReassignRide, useBroadcast } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -100,6 +100,42 @@ export default function Dashboard() {
   const gradId = useId().replace(/:/g, "rev");
   const [isExporting, setIsExporting] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
+  const [assignRiderOpen, setAssignRiderOpen] = useState(false);
+  const [assignRideId, setAssignRideId] = useState<string | null>(null);
+  const [riderSearch, setRiderSearch] = useState("");
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [bcTitle, setBcTitle] = useState("");
+  const [bcBody, setBcBody] = useState("");
+  const [bcTarget, setBcTarget] = useState("all");
+  const broadcastMut = useBroadcast();
+
+  const { data: ridesData } = useRides();
+  const { data: ridersData } = useRiders();
+  const reassignMut = useAdminReassignRide();
+
+  const unassignedRides: any[] = (ridesData?.rides || []).filter(
+    (r: any) => !r.riderId && ["searching", "requested", "pending"].includes(r.status)
+  );
+
+  const handleAssignRider = useCallback((rider: any) => {
+    if (!assignRideId) return;
+    reassignMut.mutate(
+      { id: assignRideId, riderId: rider.id, riderName: rider.name || rider.phone, riderPhone: rider.phone },
+      {
+        onSuccess: () => {
+          setAssignRideId(null);
+          setRiderSearch("");
+          setAssignRiderOpen(false);
+        },
+      }
+    );
+  }, [assignRideId, reassignMut]);
+
+  useEffect(() => {
+    const handler = () => { setAssignRideId(null); setRiderSearch(""); setAssignRiderOpen(true); };
+    window.addEventListener("admin:open-assign-rider", handler);
+    return () => window.removeEventListener("admin:open-assign-rider", handler);
+  }, []);
   const [visibleSeries, setVisibleSeries] = useState<Record<ServiceKey, boolean>>({
     mart: true, rides: true, pharmacy: true, parcel: true, van: true,
   });
@@ -349,15 +385,43 @@ export default function Dashboard() {
           <p className="text-xs text-muted-foreground mt-0.5">Jump directly to common tasks</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 divide-x divide-y divide-border/30">
+          {/* Assign Rider — dispatches a custom event so any part of the app can trigger this */}
+          <button
+            type="button"
+            className="text-left"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("admin:open-assign-rider"));
+            }}
+          >
+            <div className="flex items-center gap-3 p-4 cursor-pointer transition-colors hover:bg-indigo-50 group min-h-[72px]">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-border/50 shadow-sm group-hover:shadow transition-shadow shrink-0">
+                <Car className="w-4 h-4 text-indigo-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground leading-tight truncate">Assign Rider</p>
+                <p className="text-xs text-muted-foreground truncate">Unassigned rides</p>
+              </div>
+            </div>
+          </button>
+
+          {/* Send Broadcast — opens inline composer */}
+          <button
+            type="button"
+            className="text-left"
+            onClick={() => { setBcTitle(""); setBcBody(""); setBcTarget("all"); setBroadcastOpen(true); }}
+          >
+            <div className="flex items-center gap-3 p-4 cursor-pointer transition-colors hover:bg-orange-50 group min-h-[72px]">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-border/50 shadow-sm group-hover:shadow transition-shadow shrink-0">
+                <AlertTriangle className="w-4 h-4 text-orange-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground leading-tight truncate">Send Broadcast</p>
+                <p className="text-xs text-muted-foreground truncate">Push / SMS / email</p>
+              </div>
+            </div>
+          </button>
+
           {[
-            {
-              label: "Assign Rider",
-              sub: "Unassigned rides",
-              href: "/rides?status=unassigned",
-              icon: Car,
-              color: "text-indigo-600",
-              bg: "hover:bg-indigo-50",
-            },
             {
               label: "Approve Deposit",
               sub: "Pending approvals",
@@ -373,14 +437,6 @@ export default function Dashboard() {
               icon: Trophy,
               color: "text-teal-600",
               bg: "hover:bg-teal-50",
-            },
-            {
-              label: "Send Broadcast",
-              sub: "Push / SMS / email",
-              href: "/communications?tab=send",
-              icon: AlertTriangle,
-              color: "text-orange-600",
-              bg: "hover:bg-orange-50",
             },
             {
               label: "Process Withdrawal",
@@ -411,6 +467,198 @@ export default function Dashboard() {
               </div>
             </Link>
           ))}
+
+          {/* Assign Rider — inline panel */}
+          {assignRiderOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setAssignRiderOpen(false); setAssignRideId(null); }}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-center justify-between p-5 border-b border-border/40 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+                      <Car className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-foreground leading-tight">
+                        {assignRideId ? "Choose a Rider" : "Assign Rider"}
+                      </h2>
+                      <p className="text-xs text-muted-foreground">
+                        {assignRideId ? "Select a rider to assign to this ride" : `${unassignedRides.length} unassigned ride${unassignedRides.length !== 1 ? "s" : ""}`}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { if (assignRideId) { setAssignRideId(null); setRiderSearch(""); } else { setAssignRiderOpen(false); } }}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
+                  >
+                    {assignRideId ? <ArrowRight className="w-4 h-4 text-muted-foreground rotate-180" /> : <X className="w-4 h-4 text-muted-foreground" />}
+                  </button>
+                </div>
+
+                <div className="overflow-y-auto flex-1 p-4 space-y-2">
+                  {/* Step 1: pick a ride */}
+                  {!assignRideId && (
+                    unassignedRides.length === 0 ? (
+                      <div className="py-10 text-center">
+                        <UserCheck className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground font-medium">No unassigned rides</p>
+                        <p className="text-xs text-muted-foreground mt-1">All current rides have riders assigned.</p>
+                      </div>
+                    ) : (
+                      unassignedRides.map((ride: any) => (
+                        <button
+                          key={ride.id}
+                          onClick={() => { setAssignRideId(ride.id); setRiderSearch(""); }}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-border/50 hover:border-indigo-200 hover:bg-indigo-50 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                            <Car className="w-4 h-4 text-indigo-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">
+                              {ride.pickupAddress || ride.pickup || "Unknown pickup"}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              → {ride.dropoffAddress || ride.dropoff || "Unknown dropoff"}
+                            </p>
+                          </div>
+                          <span className="text-xs text-indigo-600 font-semibold shrink-0">Assign →</span>
+                        </button>
+                      ))
+                    )
+                  )}
+
+                  {/* Step 2: pick a rider */}
+                  {assignRideId && (
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search riders..."
+                          value={riderSearch}
+                          onChange={e => setRiderSearch(e.target.value)}
+                          className="w-full h-9 pl-9 pr-3 rounded-lg border border-border/50 text-sm bg-muted/30 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        />
+                      </div>
+                      {(ridersData?.users || ridersData?.riders || [])
+                        .filter((r: any) => r.isActive && !r.isBanned)
+                        .filter((r: any) => riderSearch ? (r.name || r.phone || "").toLowerCase().includes(riderSearch.toLowerCase()) : true)
+                        .slice(0, 10)
+                        .map((rider: any) => (
+                          <button
+                            key={rider.id}
+                            onClick={() => handleAssignRider(rider)}
+                            disabled={reassignMut.isPending}
+                            className="w-full flex items-center gap-3 p-3 rounded-xl border border-border/50 hover:border-green-200 hover:bg-green-50 transition-colors text-left disabled:opacity-60"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 font-bold text-sm flex items-center justify-center shrink-0">
+                              {(rider.name || rider.phone || "R")[0].toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-foreground">{rider.name || rider.phone}</p>
+                              {rider.vehiclePlate && <p className="text-xs text-muted-foreground font-mono">{rider.vehiclePlate}</p>}
+                            </div>
+                            {reassignMut.isPending ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" /> : <UserCheck className="w-4 h-4 text-green-600 shrink-0" />}
+                          </button>
+                        ))}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Broadcast Composer — inline modal */}
+          {broadcastOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setBroadcastOpen(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-border/40 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center">
+                      <AlertTriangle className="w-4 h-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-foreground leading-tight">Send Broadcast</h2>
+                      <p className="text-xs text-muted-foreground">Push / SMS / email notification</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setBroadcastOpen(false)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted transition-colors">
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </div>
+                <form
+                  onSubmit={e => {
+                    e.preventDefault();
+                    if (!bcTitle.trim() || !bcBody.trim()) return;
+                    broadcastMut.mutate(
+                      { title: bcTitle.trim(), body: bcBody.trim(), targetRole: bcTarget === "all" ? undefined : bcTarget },
+                      {
+                        onSuccess: () => {
+                          toast({ title: "Broadcast sent", description: `Message sent to ${bcTarget === "all" ? "all users" : bcTarget}` });
+                          setBroadcastOpen(false);
+                        },
+                        onError: (err: Error) => toast({ title: "Failed to send", description: err.message, variant: "destructive" }),
+                      }
+                    );
+                  }}
+                  className="p-5 space-y-3"
+                >
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground mb-1 block">Audience</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {(["all", "customer", "rider", "vendor"] as const).map(t => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setBcTarget(t)}
+                          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors font-medium capitalize ${bcTarget === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"}`}
+                        >
+                          {t === "all" ? "All Users" : t.charAt(0).toUpperCase() + t.slice(1) + "s"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground mb-1 block">Title</label>
+                    <input
+                      type="text"
+                      placeholder="Notification title"
+                      value={bcTitle}
+                      onChange={e => setBcTitle(e.target.value)}
+                      required
+                      className="w-full h-9 px-3 rounded-lg border border-border/50 text-sm bg-muted/30 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground mb-1 block">Message</label>
+                    <textarea
+                      placeholder="Write your message..."
+                      value={bcBody}
+                      onChange={e => setBcBody(e.target.value)}
+                      required
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-lg border border-border/50 text-sm bg-muted/30 focus:outline-none focus:ring-2 focus:ring-orange-200 resize-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button type="button" variant="outline" className="flex-1 h-9 rounded-xl" onClick={() => setBroadcastOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="flex-1 h-9 rounded-xl bg-orange-600 hover:bg-orange-700"
+                      disabled={broadcastMut.isPending || !bcTitle.trim() || !bcBody.trim()}
+                    >
+                      {broadcastMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                      {broadcastMut.isPending ? "Sending…" : "Send"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 
