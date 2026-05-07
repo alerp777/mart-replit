@@ -93,7 +93,7 @@ export function validateGpsPing(prev: GpsPing | null, next: GpsPing): GpsValidat
         prev.latitude, prev.longitude,
         next.latitude, next.longitude,
       );
-      const speedKmh = (distM / deltaMs) * 3_600_000;
+      const speedKmh = (distM / deltaMs) * 3_600;
       if (speedKmh > MAX_SPEED_KMH) {
         const reason = `impossible speed (${Math.round(speedKmh)} km/h)`;
         recordRejection(reason, next.latitude, next.longitude);
