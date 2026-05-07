@@ -18,7 +18,7 @@ interface Review {
 interface ReviewsData {
   reviews: Review[];
   avgRating?: number;
-  totalReviews?: number;
+  total?: number;
 }
 
 function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
@@ -62,7 +62,7 @@ export default function Reviews() {
 
   const reviews: Review[] = data?.reviews ?? [];
   const avgRating: number = data?.avgRating ?? 0;
-  const totalReviews: number = data?.totalReviews ?? reviews.length;
+  const totalReviews: number = data?.total ?? reviews.length;
 
   function formatDate(d: string) {
     return formatDateTz(d, { day: "numeric", month: "short", year: "numeric" }, tz);
