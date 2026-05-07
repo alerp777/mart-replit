@@ -14,6 +14,13 @@ declare global {
 let _platform = "";
 let _ready = false;
 
+/**
+ * Events that arrive before initAnalytics is called (e.g. early web-vitals
+ * reports for FCP / TTFB that fire during the initial page load) are held
+ * here and flushed in FIFO order once the analytics backend initialises.
+ */
+let _queue: Array<{ name: string; params?: Record<string, unknown> }> = [];
+
 export function initAnalytics(
   platform: string,
   trackingId: string,
@@ -27,6 +34,12 @@ export function initAnalytics(
     _initGa4(trackingId, debug);
   } else if (platform === "mixpanel") {
     _initMixpanel(trackingId, debug);
+  }
+
+  // Replay any events that were buffered before init.
+  const queued = _queue.splice(0);
+  for (const ev of queued) {
+    _dispatch(ev.name, ev.params);
   }
 }
 
@@ -51,11 +64,7 @@ function _initMixpanel(token: string, debug: boolean): void {
   document.head.appendChild(script);
 }
 
-export function trackEvent(
-  name: string,
-  params?: Record<string, unknown>,
-): void {
-  if (!_ready) return;
+function _dispatch(name: string, params?: Record<string, unknown>): void {
   if (_platform === "ga4" || _platform === "google_analytics") {
     if (typeof window.gtag === "function") {
       window.gtag("event", name, params);
@@ -63,6 +72,18 @@ export function trackEvent(
   } else if (_platform === "mixpanel") {
     window.mixpanel?.track(name, params);
   }
+}
+
+export function trackEvent(
+  name: string,
+  params?: Record<string, unknown>,
+): void {
+  if (!_ready) {
+    // Buffer the event — it will be replayed once initAnalytics completes.
+    _queue.push({ name, params });
+    return;
+  }
+  _dispatch(name, params);
 }
 
 export function trackPageView(path: string): void {

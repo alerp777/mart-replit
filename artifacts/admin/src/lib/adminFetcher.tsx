@@ -188,7 +188,12 @@ export async function fetchAdmin(
 
         return retryResponse;
       } catch (err) {
-        // Refresh or retry failed - redirect to login
+        // A timeout on the retry should surface a toast, not force logout.
+        // Only genuine auth failures (401/403 from the server) should redirect.
+        if (err instanceof TimeoutError) {
+          handleTimeoutError(err);
+          throw err;
+        }
         console.error('Token refresh failed:', err);
         const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
         safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
@@ -277,6 +282,10 @@ export async function fetchAdminAbsolute(
       response = await fetch(path, { ...options, signal: retrySignal, headers, credentials: 'include' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (err) {
+      if (err instanceof TimeoutError) {
+        handleTimeoutError(err);
+        throw err;
+      }
       console.error('Token refresh failed (absolute):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
       safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
@@ -351,6 +360,10 @@ export async function fetchAdminAbsoluteResponse(
       const retrySignal = timeoutSignal(FETCH_TIMEOUT_MS);
       response = await fetch(path, { ...options, signal: retrySignal, headers: baseHeaders, credentials: 'include' });
     } catch (err) {
+      if (err instanceof TimeoutError) {
+        handleTimeoutError(err);
+        throw err;
+      }
       console.error('Token refresh failed (response):', err);
       safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
       window.location.href = `${import.meta.env.BASE_URL || '/'}login`;
