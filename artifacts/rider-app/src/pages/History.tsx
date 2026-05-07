@@ -269,7 +269,7 @@ export default function History() {
                             </span>
                           </div>
                         )}
-                        {item.proofPhoto && (
+                        {item.proofPhoto && completed && item.kind === "order" && (
                           <div className="flex items-start gap-2 pt-1">
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 w-16 flex-shrink-0">Proof</span>
                             <a href={item.proofPhoto} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:opacity-90 transition-opacity">
