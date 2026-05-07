@@ -18,8 +18,8 @@ function MethodLogo({ id }: { id: string }) {
   return <Landmark size={28} className="text-blue-500"/>;
 }
 
-export default function RemittanceModal({ netOwed, onClose, onSuccess }: {
-  netOwed: number; onClose: () => void; onSuccess: () => void;
+export default function RemittanceModal({ netOwed, codCollected, onClose, onSuccess }: {
+  netOwed: number; codCollected?: number; onClose: () => void; onSuccess: () => void;
 }) {
   const { user } = useAuth();
   const { symbol: currencySymbol } = useCurrency();
@@ -71,6 +71,7 @@ export default function RemittanceModal({ netOwed, onClose, onSuccess }: {
   const goToConfirm = () => {
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt < 1) { setErr(`Amount kam az kam ${currencySymbol} 1 hona chahiye`); return; }
+    if (codCollected != null && amt > codCollected) { setErr(`Amount ${fc(amt)} aapke collected COD ${fc(codCollected)} se zyada nahi ho sakta`); return; }
     if (amt > netOwed) { setErr(`Amount ${fc(amt)} owed amount ${fc(netOwed)} se zyada nahi ho sakta`); return; }
     const balanceCheck = checkSufficientBalance(netOwed, amt);
     if (!balanceCheck.valid) { setErr(balanceCheck.reason); return; }

@@ -512,7 +512,7 @@ export const api = {
   getCancelStats: () => apiFetch("/rider/cancel-stats"),
   getIgnoreStats: () => apiFetch("/rider/ignore-stats"),
   getPenaltyHistory: () => apiFetch("/rider/penalty-history"),
-  getHistory:   (opts: { limit?: number; offset?: number } = {}): Promise<{ history: Array<{ id: string; kind: "order" | "ride"; type: string; status: string; earnings: number; amount: number; address?: string; createdAt: string; proofPhoto?: string }>; hasMore: boolean; limit: number; offset: number }> => {
+  getHistory:   (opts: { limit?: number; offset?: number } = {}): Promise<{ history: Array<{ id: string; kind: "order" | "ride"; type: string; status: string; earnings: number; amount: number; address?: string; createdAt: string; proofPhoto?: string; origin?: string; destination?: string; fare?: number; distance?: string | number; duration?: number }>; hasMore: boolean; limit: number; offset: number }> => {
     const params = new URLSearchParams();
     if (opts.limit  !== undefined) params.set("limit",  String(opts.limit));
     if (opts.offset !== undefined) params.set("offset", String(opts.offset));

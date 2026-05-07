@@ -14,6 +14,8 @@ function formatDate(d: string | Date, tz?: string) {
   return formatDateTz(d, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }, tz ?? "Asia/Karachi");
 }
 
+function formatCurrency(n: number) { return `Rs. ${Math.round(n).toLocaleString()}`; }
+
 type FilterPeriod = "today" | "week" | "all";
 type FilterKind   = "all" | "order" | "ride";
 
@@ -21,6 +23,8 @@ type HistoryItem = {
   id: string; kind: "order" | "ride"; type: string;
   status: string; earnings: number; amount: number;
   address?: string; createdAt: string; proofPhoto?: string;
+  origin?: string; destination?: string;
+  fare?: number; distance?: string | number; duration?: number;
 };
 
 const PAGE_SIZE = 50;
@@ -247,27 +251,82 @@ export default function History() {
                     </div>
                     {isExpanded && (
                       <div className="border-t border-gray-100 px-4 py-3 space-y-2 bg-gray-50/50">
-                        {item.address && (
-                          <div className="flex items-start gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5 w-16 flex-shrink-0">Address</span>
-                            <span className="text-xs text-gray-600 font-medium flex-1">{item.address}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Status</span>
-                          <span className="text-xs text-gray-700 font-semibold capitalize">{item.status.replace(/_/g, " ")}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Date</span>
-                          <span className="text-xs text-gray-600">{formatDate(item.createdAt, tz)}</span>
-                        </div>
-                        {(completed || cancelled) && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">{T("earnings")}</span>
-                            <span className={`text-xs font-extrabold ${completed ? "text-green-600" : "text-gray-400"}`}>
-                              {completed ? `+${formatCurrency(item.earnings || 0)}` : "—"}
-                            </span>
-                          </div>
+                        {item.kind === "ride" ? (
+                          <>
+                            {item.origin && (
+                              <div className="flex items-start gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5 w-16 flex-shrink-0">From</span>
+                                <span className="text-xs text-gray-600 font-medium flex-1">{item.origin}</span>
+                              </div>
+                            )}
+                            {item.destination && (
+                              <div className="flex items-start gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5 w-16 flex-shrink-0">To</span>
+                                <span className="text-xs text-gray-600 font-medium flex-1">{item.destination}</span>
+                              </div>
+                            )}
+                            {item.fare != null && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Fare</span>
+                                <span className="text-xs text-gray-700 font-semibold">{formatCurrency(item.fare)}</span>
+                              </div>
+                            )}
+                            {item.distance != null && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Distance</span>
+                                <span className="text-xs text-gray-700 font-semibold">
+                                  {typeof item.distance === "number" ? `${parseFloat(String(item.distance)).toFixed(1)} km` : `${parseFloat(String(item.distance)).toFixed(1)} km`}
+                                </span>
+                              </div>
+                            )}
+                            {item.duration != null && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Duration</span>
+                                <span className="text-xs text-gray-700 font-semibold">{item.duration} min</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Status</span>
+                              <span className="text-xs text-gray-700 font-semibold capitalize">{item.status.replace(/_/g, " ")}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Date</span>
+                              <span className="text-xs text-gray-600">{formatDate(item.createdAt, tz)}</span>
+                            </div>
+                            {(completed || cancelled) && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">{T("earnings")}</span>
+                                <span className={`text-xs font-extrabold ${completed ? "text-green-600" : "text-gray-400"}`}>
+                                  {completed ? `+${formatCurrency(item.earnings || 0)}` : "—"}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {item.address && (
+                              <div className="flex items-start gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5 w-16 flex-shrink-0">Address</span>
+                                <span className="text-xs text-gray-600 font-medium flex-1">{item.address}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Status</span>
+                              <span className="text-xs text-gray-700 font-semibold capitalize">{item.status.replace(/_/g, " ")}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">Date</span>
+                              <span className="text-xs text-gray-600">{formatDate(item.createdAt, tz)}</span>
+                            </div>
+                            {(completed || cancelled) && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0">{T("earnings")}</span>
+                                <span className={`text-xs font-extrabold ${completed ? "text-green-600" : "text-gray-400"}`}>
+                                  {completed ? `+${formatCurrency(item.earnings || 0)}` : "—"}
+                                </span>
+                              </div>
+                            )}
+                          </>
                         )}
                         {item.proofPhoto && completed && item.kind === "order" && (
                           <div className="flex items-start gap-2 pt-1">

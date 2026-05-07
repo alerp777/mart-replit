@@ -211,20 +211,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const refreshUser = async () => {
-    try {
-      const u = await api.getMe();
-      setUser(u);
-      refreshFailCountRef.current = 0;
-    } catch {
-      refreshFailCountRef.current += 1;
-      if (refreshFailCountRef.current >= 3) {
-        window.dispatchEvent(new CustomEvent("ajkmart:refresh-user-failed", {
-          detail: { count: refreshFailCountRef.current },
-        }));
+  const refreshUserInflightRef = useRef<Promise<void> | null>(null);
+
+  const refreshUser = useCallback(async () => {
+    if (refreshUserInflightRef.current) return refreshUserInflightRef.current;
+    const p = (async () => {
+      try {
+        const u = await api.getMe();
+        setUser(u);
+        refreshFailCountRef.current = 0;
+      } catch {
+        refreshFailCountRef.current += 1;
+        if (refreshFailCountRef.current >= 3) {
+          window.dispatchEvent(new CustomEvent("ajkmart:refresh-user-failed", {
+            detail: { count: refreshFailCountRef.current },
+          }));
+        }
+      } finally {
+        refreshUserInflightRef.current = null;
       }
-    }
-  };
+    })();
+    refreshUserInflightRef.current = p;
+    return p;
+  }, []);
 
   return <Ctx.Provider value={{ user, token, loading, twoFactorPending, setTwoFactorPending, login, logout, refreshUser }}>{children}</Ctx.Provider>;
 }

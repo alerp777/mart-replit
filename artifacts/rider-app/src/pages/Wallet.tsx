@@ -915,6 +915,7 @@ export default function Wallet() {
       {showRemittance && (
         <RemittanceModal
           netOwed={codNetOwed}
+          codCollected={codCollected}
           onClose={() => setShowRemittance(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["rider-cod"] });

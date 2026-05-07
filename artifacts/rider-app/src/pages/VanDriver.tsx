@@ -4,6 +4,9 @@ import { apiFetch } from "../lib/api";
 import { enqueueAction } from "../lib/offline/queueManager";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../lib/auth";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 interface DriverMetrics {
   tripsToday: number;
@@ -109,12 +112,28 @@ const STATUS_STYLE: Record<string, string> = {
   completed: "bg-gray-100 text-gray-600",
 };
 
+function AutoPanMap({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => { map.setView([lat, lng], map.getZoom()); }, [lat, lng]);
+  return null;
+}
+
+const riderMarkerIcon = L.divIcon({
+  className: "",
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+  html: `<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
+    <div style="background:#4f46e5;border-radius:50%;width:16px;height:16px;border:3px solid white;box-shadow:0 0 0 4px rgba(79,70,229,0.3);"></div>
+  </div>`,
+});
+
 export default function VanDriver() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [selectedSchedule, setSelectedSchedule] = useState<VanSchedule | null>(null);
   const [error, setError] = useState("");
   const [broadcasting, setBroadcasting] = useState(false);
+  const [riderPos, setRiderPos] = useState<[number, number] | null>(null);
   const gpsIntervalRef = useRef<number | null>(null);
 
   const { data: schedules = [], isLoading } = useQuery<VanSchedule[]>({
@@ -210,6 +229,7 @@ export default function VanDriver() {
         (pos) => {
           gpsInflightRef.current = false;
           setGpsError(null);
+          setRiderPos([pos.coords.latitude, pos.coords.longitude]);
           sendLocation(schedId, schedDate, pos.coords.latitude, pos.coords.longitude).catch(() => {});
         },
         (err) => {
@@ -429,6 +449,30 @@ export default function VanDriver() {
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
                 <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" />
                 <span className="text-green-700 text-sm font-medium">Broadcasting GPS to passengers</span>
+              </div>
+            )}
+
+            {/* Live location map — shows rider's position while broadcasting */}
+            {isTripInProgress && riderPos && (
+              <div className="relative rounded-2xl overflow-hidden border border-indigo-100 shadow-sm" style={{ height: 180 }}>
+                <MapContainer
+                  center={riderPos}
+                  zoom={15}
+                  style={{ width: "100%", height: "100%" }}
+                  zoomControl={false}
+                  dragging={false}
+                  scrollWheelZoom={false}
+                  doubleClickZoom={false}
+                  keyboard={false}
+                  attributionControl={false}
+                >
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <Marker position={riderPos} icon={riderMarkerIcon} />
+                  <AutoPanMap lat={riderPos[0]} lng={riderPos[1]} />
+                </MapContainer>
+                <div className="absolute bottom-1 left-1 z-[1000] bg-indigo-600/80 text-white text-[9px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
+                  Your Location
+                </div>
               </div>
             )}
 

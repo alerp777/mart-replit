@@ -1,5 +1,5 @@
 import type { TranslationKey } from "@workspace/i18n";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CheckCircle,
   MapPin,
@@ -66,6 +66,12 @@ export function RideRequestCard({
   const [counterInput, setCounterInput] = useState("");
   const [showCounterForm, setShowCounterForm] = useState(false);
   const [counterError, setCounterError] = useState("");
+  const [localBidPending, setLocalBidPending] = useState(false);
+
+  /* Clear local pending flag once the server confirms via r.myBid */
+  useEffect(() => {
+    if (r.myBid && localBidPending) setLocalBidPending(false);
+  }, [r.myBid, localBidPending]);
 
   const acceptTimeoutSec = config.rides.acceptTimeoutSec ?? config.dispatch?.broadcastTimeoutSec ?? ACCEPT_TIMEOUT_SEC;
 
@@ -106,6 +112,7 @@ export function RideRequestCard({
   };
 
   const validateAndSubmitCounter = () => {
+    if (localBidPending || counterPending) return;
     const v = Number(counterInput || 0);
     const minFare = getMinFare();
     const maxFare = getMaxFare();
@@ -118,6 +125,7 @@ export function RideRequestCard({
       return;
     }
     setCounterError("");
+    setLocalBidPending(true);
     onCounter(r.id, v);
     setCounterInput("");
     setShowCounterForm(false);
@@ -324,7 +332,18 @@ export function RideRequestCard({
 
       {isBargain && (
         <div className="mt-3 space-y-2">
-          {r.myBid ? (
+          {localBidPending && !r.myBid ? (
+            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-xl p-3.5 flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-bold text-indigo-700">Bid Submitted — Waiting for Response</p>
+                <p className="text-[10px] text-indigo-500 mt-0.5">Your counter offer is being sent to the customer…</p>
+              </div>
+              <span className="text-[10px] font-bold px-2.5 py-1 bg-indigo-100 text-indigo-600 rounded-full animate-pulse border border-indigo-200">
+                PENDING
+              </span>
+            </div>
+          ) : r.myBid ? (
             <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div>

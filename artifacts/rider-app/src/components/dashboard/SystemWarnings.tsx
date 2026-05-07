@@ -104,6 +104,8 @@ export function FixedBanners({
       {showAudio && (
         <button
           onClick={onUnlockAudio}
+          onTouchEnd={(e) => { e.preventDefault(); onUnlockAudio(); }}
+          onPointerUp={onUnlockAudio}
           className="fixed left-0 right-0 z-[48] bg-indigo-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg px-3 w-full"
           style={{
             top: `calc(${safeTop} + ${audioTop * BANNER_H}px)`,
