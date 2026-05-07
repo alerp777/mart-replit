@@ -55,6 +55,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    esbuild: {
+      drop: ["console", "debugger"],
+    },
     /**
      * Browser support matrix (mirrored in `package.json#browserslist`):
      *   Chrome ≥100, Firefox ≥100, Safari ≥15.4, Edge ≥100, iOS ≥15.4.

@@ -103,9 +103,7 @@ async function registerFcmPush(
         body: JSON.stringify({ type: "fcm", token, role: "vendor" }),
       });
       if (!res.ok) {
-        console.warn("[push] FCM token registration failed:", res.status, res.statusText);
-      } else if (import.meta.env.DEV) {
-        console.log("[push] FCM token registered/refreshed");
+        if (import.meta.env.DEV) console.warn("[push] FCM token registration failed:", res.status, res.statusText);
       }
     };
 

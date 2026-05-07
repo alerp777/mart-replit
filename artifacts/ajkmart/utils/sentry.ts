@@ -37,7 +37,6 @@ export async function initSentry(
           sampleRate: sampleRate ?? 1.0,
           tracesSampleRate: 0.1,
         });
-        console.debug("[Sentry] Customer app initialized, env:", environment);
       } catch (e) {
         if (__DEV__) console.warn("[Sentry] init error:", e);
       }

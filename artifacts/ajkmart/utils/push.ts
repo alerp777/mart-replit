@@ -51,7 +51,6 @@ export async function registerPush(authToken: string): Promise<void> {
       }),
     });
 
-    console.debug("[Push] Customer push subscription registered");
   } catch (e) {
     if (__DEV__) console.warn("[Push] Registration failed:", e);
   }

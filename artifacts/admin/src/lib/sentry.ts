@@ -19,13 +19,9 @@ export function initSentry(cfg: SentryConfig): void {
     tracesSampleRate: cfg.tracesSampleRate ?? 0.1,
     integrations: [Sentry.browserTracingIntegration()],
     beforeSend(event) {
-      if (event.exception) {
-        console.debug("[Sentry] Captured exception:", event.exception.values?.[0]?.value);
-      }
       return event;
     },
   });
-  console.debug("[Sentry] Initialized for admin panel, env:", cfg.environment);
 }
 
 export function captureError(err: unknown, context?: Record<string, unknown>): void {

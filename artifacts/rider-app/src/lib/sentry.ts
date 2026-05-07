@@ -12,7 +12,6 @@ export function initSentry(dsn: string, environment: string, sampleRate: number,
     tracesSampleRate: tracesSampleRate ?? 0.1,
     integrations: [Sentry.browserTracingIntegration()],
   });
-  console.debug("[Sentry] Rider app initialized, env:", environment);
 }
 
 export function captureError(err: unknown, context?: Record<string, unknown>): void {

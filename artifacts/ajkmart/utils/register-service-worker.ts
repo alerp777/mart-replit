@@ -11,8 +11,8 @@ export function registerServiceWorker() {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
-      .then((registration) => {
-        if (__DEV__) console.log("[SW] Registered:", registration.scope);
+      .then(() => {
+        // Service worker registered successfully
       })
       .catch((err) => {
         if (__DEV__) console.warn("[SW] Registration failed:", err);

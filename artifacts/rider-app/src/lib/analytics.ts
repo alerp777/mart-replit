@@ -29,7 +29,6 @@ export function initAnalytics(platform: string, trackingId: string, debug: boole
   } else if (platform === "mixpanel") {
     _initMixpanel(trackingId, debug);
   }
-  console.debug("[Analytics] Rider app initialized:", platform);
 }
 
 function _initGa4(id: string, debug: boolean): void {

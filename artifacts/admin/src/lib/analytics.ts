@@ -28,7 +28,6 @@ export function initAnalytics(
   } else if (platform === "mixpanel") {
     _initMixpanel(trackingId, debug);
   }
-  console.debug("[Analytics] Initialized:", platform, trackingId.slice(0, 6) + "…");
 }
 
 function _initGa4(id: string, debug: boolean): void {
