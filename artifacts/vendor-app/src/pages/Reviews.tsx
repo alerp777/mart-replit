@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { usePlatformConfig, formatDateTz } from "../lib/useConfig";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 function StarBar({ starValue, count, total }: { starValue: number; count: number; total: number }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -113,6 +114,20 @@ export default function Reviews() {
   const avgRating: number | null = data?.avgRating ?? null;
   const breakdown: Record<number, number> = data?.starBreakdown ?? {};
 
+  const trendData = useMemo(() => {
+    const buckets: Record<string, { date: string; avg: number; count: number; sum: number }> = {};
+    reviews.forEach(r => {
+      const d = new Date(r.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      if (!buckets[key]) buckets[key] = { date: key, avg: 0, count: 0, sum: 0 };
+      buckets[key].sum   += r.rating;
+      buckets[key].count += 1;
+    });
+    return Object.values(buckets)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(b => ({ date: b.date.slice(5), avg: Number((b.sum / b.count).toFixed(2)), count: b.count }));
+  }, [reviews]);
+
   const handleReplySubmit = (reviewId: string, existing: boolean) => {
     if (!replyText.trim()) return;
     if (existing) {
@@ -154,6 +169,30 @@ export default function Reviews() {
           </div>
         </div>
       </div>
+
+      {/* Rating Trend Chart */}
+      {trendData.length >= 2 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-5">
+          <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-3">Rating Trend (this page)</p>
+          <ResponsiveContainer width="100%" height={110}>
+            <AreaChart data={trendData} margin={{ top: 4, right: 4, left: -30, bottom: 0 }}>
+              <defs>
+                <linearGradient id="ratingGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.25}/>
+                  <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false}/>
+              <YAxis domain={[1, 5]} tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} ticks={[1,2,3,4,5]}/>
+              <Tooltip
+                contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,.1)", fontSize: 12 }}
+                formatter={(v: number) => [`${v} ★`, "Avg rating"]}
+              />
+              <Area type="monotone" dataKey="avg" stroke="#f97316" strokeWidth={2.5} fill="url(#ratingGrad)" dot={{ r: 3, fill: "#f97316", stroke: "white", strokeWidth: 2 }}/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 mb-4">

@@ -12,6 +12,272 @@ interface SearchResult { id: string; name: string; ajkId: string; role: string; 
 interface IncomingCallData { callId: string; callerId: string; callerName?: string; callerAjkId?: string; }
 interface CallSignal { callId: string; callerId?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit; }
 
+const STORAGE_KEY = "vendor_quick_replies";
+const MAX_SHORTCUTS = 8;
+
+function loadLocalShortcuts(): string[] | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every(s => typeof s === "string")) {
+        return parsed.slice(0, MAX_SHORTCUTS);
+      }
+    }
+  } catch {}
+  return null;
+}
+
+const SUGGESTED_TEMPLATES: { category: string; icon: string; items: string[] }[] = [
+  {
+    category: "General",
+    icon: "💬",
+    items: [
+      "Thank you for your order! 🙏",
+      "Your order has been received ✅",
+      "We'll update you shortly ⏳",
+      "Please allow a few extra minutes 🙏",
+    ],
+  },
+  {
+    category: "Food",
+    icon: "🍔",
+    items: [
+      "Order is being prepared 🍳",
+      "Ready for pickup 📦",
+      "On its way! 🛵",
+      "Will be ready in 10 mins ⏱",
+      "Our kitchen is a little busy — 15 mins extra ⏳",
+    ],
+  },
+  {
+    category: "Pharmacy",
+    icon: "💊",
+    items: [
+      "Prescription received — preparing your order 💊",
+      "One item is out of stock — we'll contact you shortly",
+      "Your medicine is packed and ready 📦",
+      "Delivery on the way 🛵",
+    ],
+  },
+  {
+    category: "Parcel",
+    icon: "📦",
+    items: [
+      "Parcel received and being processed 📦",
+      "Your parcel is out for delivery 🛵",
+      "Parcel delivered successfully ✅",
+      "We couldn't deliver — please confirm your address",
+    ],
+  },
+];
+
+const DEFAULT_SHORTCUTS = [
+  "Order is being prepared 🍳",
+  "Ready for pickup 📦",
+  "On its way! 🛵",
+  "Thank you for your order! 🙏",
+  "Will be ready in 10 mins ⏱",
+];
+
+function saveLocalShortcuts(shortcuts: string[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts.slice(0, MAX_SHORTCUTS)));
+  } catch {}
+}
+
+function ShortcutsModal({ shortcuts, onSave, onClose }: { shortcuts: string[]; onSave: (s: string[]) => void; onClose: () => void; }) {
+  const [list, setList] = useState<string[]>([...shortcuts]);
+  const [newText, setNewText] = useState("");
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
+
+  const addShortcut = () => {
+    const trimmed = newText.trim();
+    if (!trimmed || list.length >= MAX_SHORTCUTS) return;
+    setList(prev => [...prev, trimmed]);
+    setNewText("");
+  };
+
+  const removeShortcut = (idx: number) => {
+    setList(prev => prev.filter((_, i) => i !== idx));
+    if (editIdx === idx) { setEditIdx(null); setEditText(""); }
+  };
+
+  const startEdit = (idx: number) => {
+    setEditIdx(idx);
+    setEditText(list[idx]);
+  };
+
+  const saveEdit = () => {
+    if (editIdx === null) return;
+    const trimmed = editText.trim();
+    if (!trimmed) { setEditIdx(null); return; }
+    setList(prev => prev.map((s, i) => i === editIdx ? trimmed : s));
+    setEditIdx(null);
+    setEditText("");
+  };
+
+  const handleDragStart = (idx: number) => setDragIdx(idx);
+  const handleDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setOverIdx(idx); };
+  const handleDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
+    const next = [...list];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(idx, 0, moved);
+    setList(next);
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+
+  const handleSave = () => { onSave(list); onClose(); };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div>
+            <h2 className="text-lg font-extrabold text-gray-800">Edit Quick Replies</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{list.length}/{MAX_SHORTCUTS} shortcuts · drag to reorder</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition text-lg">✕</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
+          {list.length === 0 && (
+            <p className="text-center text-gray-400 text-sm py-6">No shortcuts yet. Add one below.</p>
+          )}
+          {list.map((s, idx) => (
+            <div
+              key={idx}
+              draggable
+              onDragStart={() => handleDragStart(idx)}
+              onDragOver={e => handleDragOver(e, idx)}
+              onDrop={() => handleDrop(idx)}
+              onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+              className={`flex items-center gap-2 p-2 rounded-xl border transition cursor-grab active:cursor-grabbing
+                ${overIdx === idx && dragIdx !== idx ? "border-orange-400 bg-orange-50" : "border-gray-100 bg-gray-50"}
+                ${dragIdx === idx ? "opacity-40" : "opacity-100"}
+              `}
+            >
+              <span className="text-gray-300 text-lg select-none px-1">⠿</span>
+              {editIdx === idx ? (
+                <input
+                  autoFocus
+                  value={editText}
+                  onChange={e => setEditText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") { setEditIdx(null); setEditText(""); } }}
+                  className="flex-1 text-sm px-2 py-1 rounded-lg border border-orange-400 focus:ring-2 focus:ring-orange-200 outline-none"
+                />
+              ) : (
+                <span className="flex-1 text-sm text-gray-700 break-words">{s}</span>
+              )}
+              {editIdx === idx ? (
+                <button onClick={saveEdit} className="text-green-600 font-bold text-sm px-2 py-1 rounded-lg hover:bg-green-50 transition flex-shrink-0">Save</button>
+              ) : (
+                <button onClick={() => startEdit(idx)} className="text-orange-500 text-sm px-2 py-1 rounded-lg hover:bg-orange-50 transition flex-shrink-0">Edit</button>
+              )}
+              <button onClick={() => removeShortcut(idx)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 transition flex-shrink-0 text-sm">✕</button>
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-3 border-t space-y-3">
+          {list.length < MAX_SHORTCUTS ? (
+            <>
+              <div className="flex gap-2">
+                <input
+                  value={newText}
+                  onChange={e => setNewText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") addShortcut(); }}
+                  placeholder="Add a new quick reply…"
+                  maxLength={120}
+                  className="flex-1 h-10 px-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm"
+                />
+                <button
+                  onClick={addShortcut}
+                  disabled={!newText.trim()}
+                  className="h-10 px-4 bg-orange-500 text-white rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-orange-600 transition"
+                >
+                  Add
+                </button>
+              </div>
+
+              {/* Suggested templates toggle */}
+              <button
+                onClick={() => setShowSuggestions(s => !s)}
+                className="w-full flex items-center justify-between text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-100 px-3 py-2 rounded-xl hover:bg-orange-100 transition"
+              >
+                <span>✨ Pick from suggested templates</span>
+                <span className="text-gray-400">{showSuggestions ? "▲" : "▼"}</span>
+              </button>
+
+              {showSuggestions && (
+                <div className="rounded-xl border border-gray-100 overflow-hidden">
+                  {SUGGESTED_TEMPLATES.map(group => (
+                    <div key={group.category}>
+                      <button
+                        onClick={() => setOpenCategory(c => c === group.category ? null : group.category)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition text-left"
+                      >
+                        <span className="text-sm font-bold text-gray-700">{group.icon} {group.category}</span>
+                        <span className="text-gray-400 text-xs">{openCategory === group.category ? "▲" : "▼"}</span>
+                      </button>
+                      {openCategory === group.category && (
+                        <div className="divide-y divide-gray-50">
+                          {group.items.map(item => {
+                            const alreadyAdded = list.includes(item);
+                            const listFull = list.length >= MAX_SHORTCUTS;
+                            return (
+                              <div key={item} className="flex items-center bg-white px-3 py-2 gap-2">
+                                <span className={`flex-1 text-sm ${alreadyAdded ? "text-gray-300" : "text-gray-700"}`}>{item}</span>
+                                {alreadyAdded ? (
+                                  <span className="text-[10px] text-gray-300 flex-shrink-0 px-1">Added</span>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => { setNewText(item); setShowSuggestions(false); setOpenCategory(null); }}
+                                      className="flex-shrink-0 h-7 px-2.5 rounded-lg border border-orange-200 text-orange-500 text-[11px] font-semibold hover:bg-orange-50 transition"
+                                    >
+                                      Use →
+                                    </button>
+                                    <button
+                                      disabled={listFull}
+                                      onClick={() => { setList(prev => prev.includes(item) || prev.length >= MAX_SHORTCUTS ? prev : [...prev, item]); }}
+                                      title={listFull ? "List is full" : "Add directly"}
+                                      className="flex-shrink-0 w-7 h-7 rounded-lg bg-orange-500 text-white text-base font-bold flex items-center justify-center hover:bg-orange-600 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                                    >
+                                      +
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 text-center">Maximum {MAX_SHORTCUTS} shortcuts reached. Remove one to add more.</p>
+          )}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 h-11 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition">Cancel</button>
+            <button onClick={handleSave} className="flex-1 h-11 rounded-xl bg-orange-500 text-white font-bold text-sm hover:bg-orange-600 transition">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Chat() {
   const { user, token } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -33,6 +299,10 @@ export default function Chat() {
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const [conversationsError, setConversationsError] = useState(false);
   const [requestsError, setRequestsError]           = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<string[]>(loadLocalShortcuts() ?? DEFAULT_SHORTCUTS);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const showError = (msg: string) => { setErrorToast(msg); setTimeout(() => setErrorToast(null), 4000); };
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -40,7 +310,24 @@ export default function Chat() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const handleSaveShortcuts = (updated: string[]) => {
+    saveLocalShortcuts(updated);
+    setQuickReplies(updated);
+    api.updateQuickReplies(updated).catch(() => {});
+  };
+
   useEffect(() => {
+    api.getQuickReplies().then(d => {
+      if (Array.isArray(d.quickReplies) && d.quickReplies.length > 0) {
+        const fromServer = (d.quickReplies as unknown[])
+          .filter((s): s is string => typeof s === "string")
+          .slice(0, MAX_SHORTCUTS);
+        setQuickReplies(fromServer);
+        saveLocalShortcuts(fromServer);
+      }
+      // Server returned [] (never synced) or non-array → keep current local/default state unchanged
+    }).catch(() => {});
+
     apiFetch("/communication/me/ajk-id").then(d => setAjkId(d.ajkId)).catch((e: unknown) => {
       showError(e instanceof Error ? e.message : "Failed to load your AJK ID");
     });
@@ -249,6 +536,14 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-full bg-white">
+      {showShortcutsModal && (
+        <ShortcutsModal
+          shortcuts={quickReplies}
+          onSave={handleSaveShortcuts}
+          onClose={() => setShowShortcutsModal(false)}
+        />
+      )}
+
       {/* Error Toast */}
       {errorToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-semibold max-w-xs text-center">
@@ -435,8 +730,76 @@ export default function Chat() {
 
       {/* Message Input */}
       {selectedConv && (
-        <div className="p-4 border-t bg-white">
-          <div className="flex gap-2">
+        <div className="border-t bg-white">
+          {/* Quick reply chips row */}
+          <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+            <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide">
+              {quickReplies.map(reply => (
+                <button
+                  key={reply}
+                  onClick={() => { setInput(reply); }}
+                  className="flex-shrink-0 h-8 px-3 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold rounded-full hover:bg-orange-100 active:scale-95 transition whitespace-nowrap"
+                >
+                  {reply}
+                </button>
+              ))}
+              {quickReplies.length === 0 && (
+                <span className="text-xs text-gray-400 self-center">No shortcuts yet</span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowShortcutsModal(true)}
+              title="Edit quick reply shortcuts"
+              className="flex-shrink-0 h-8 px-3 bg-gray-100 text-gray-500 text-xs font-semibold rounded-full hover:bg-gray-200 active:scale-95 transition whitespace-nowrap border border-gray-200"
+            >
+              ✏️ Edit
+            </button>
+          </div>
+          <div className="flex gap-2 px-4 pb-4 pt-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingFile}
+              title="Attach image or file"
+              className="h-12 w-12 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition flex-shrink-0 disabled:opacity-50"
+            >
+              {uploadingFile ? (
+                <span className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"/>
+              ) : (
+                <span className="text-xl">📎</span>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file || !selectedConv) return;
+                setUploadingFile(true);
+                try {
+                  const fd = new FormData();
+                  fd.append("file", file);
+                  const res = await apiFetch("/communication/upload", { method: "POST", body: fd });
+                  const url: string = res.url || res.fileUrl || "";
+                  const isImage = file.type.startsWith("image/");
+                  const msg: any = {
+                    conversationId: selectedConv.id,
+                    content: url,
+                    messageType: isImage ? "image" : "file",
+                  };
+                  await apiFetch("/communication/messages", { method: "POST", body: JSON.stringify(msg) });
+                  const msgs = await apiFetch(`/communication/conversations/${selectedConv.id}/messages`);
+                  setMessages(msgs.messages || []);
+                } catch (err) {
+                  showError(err instanceof Error ? err.message : "Upload failed");
+                } finally {
+                  setUploadingFile(false);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }
+              }}
+            />
             <input value={input} onChange={e => { setInput(e.target.value); socketRef.current?.emit("comm:typing:start", { conversationId: selectedConv.id, userId: user?.id }); }} onBlur={() => socketRef.current?.emit("comm:typing:stop", { conversationId: selectedConv.id, userId: user?.id })} placeholder="Type a message..." className="flex-1 h-12 px-4 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
             <button onClick={sendMessage} disabled={sending || !input.trim()} className="h-12 px-6 bg-orange-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">Send</button>
           </div>

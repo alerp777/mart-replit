@@ -42,13 +42,13 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-white">
           <div className="text-5xl mb-4">⚠️</div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Something went wrong</h1>
-          <p className="text-gray-500 text-sm mb-6">{this.state.error?.message || "An unexpected error occurred."}</p>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Kuch galat ho gaya / Something went wrong</h1>
+          <p className="text-gray-500 text-sm mb-6">{this.state.error?.message || "Ek bekaar ghalti aayi. / An unexpected error occurred."}</p>
           <button
             onClick={this.reset}
             className="px-5 py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700"
           >
-            Retry
+            Dobara koshish karein / Retry
           </button>
         </div>
       );

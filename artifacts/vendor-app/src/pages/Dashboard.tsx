@@ -10,8 +10,116 @@ import { useState, useRef, useCallback } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { useOfflineQueue } from "../hooks/useOfflineQueue";
-import { fc, CARD, STAT_VAL, STAT_LBL, DEFAULT_COMMISSION_PCT, errMsg } from "../lib/ui";
+import { fc, CARD, STAT_VAL, STAT_LBL, DEFAULT_COMMISSION_PCT, errMsg, fd } from "../lib/ui";
 import { Truck } from "lucide-react";
+
+function typeIcon(type: string) {
+  if (type === "order")  return "📦";
+  if (type === "wallet") return "💰";
+  if (type === "promo")  return "🎟️";
+  if (type === "system") return "⚙️";
+  if (type === "alert")  return "⚠️";
+  return "🔔";
+}
+
+function QuickActions() {
+  return (
+    <div className={`${CARD} p-4`}>
+      <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-3">Quick Actions</p>
+      <div className="grid grid-cols-3 gap-3">
+        <Link href="/orders"
+          className="flex flex-col items-center gap-2 p-3 bg-green-50 rounded-2xl active:scale-95 transition-transform text-center">
+          <span className="text-2xl">✅</span>
+          <span className="text-xs font-bold text-green-700 leading-tight">Accept Orders</span>
+        </Link>
+        <Link href="/chat"
+          className="flex flex-col items-center gap-2 p-3 bg-blue-50 rounded-2xl active:scale-95 transition-transform text-center">
+          <span className="text-2xl">💬</span>
+          <span className="text-xs font-bold text-blue-700 leading-tight">Open Chat</span>
+        </Link>
+        <Link href="/products"
+          className="flex flex-col items-center gap-2 p-3 bg-orange-50 rounded-2xl active:scale-95 transition-transform text-center">
+          <span className="text-2xl">🛒</span>
+          <span className="text-xs font-bold text-orange-700 leading-tight">Manage Products</span>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+interface DashNotification {
+  id: string;
+  title: string;
+  body: string;
+  type: string;
+  isRead?: boolean;
+  createdAt: string;
+}
+
+function NotificationsSection() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["vendor-notifications"],
+    queryFn: () => api.getNotifications(),
+    refetchInterval: 30000,
+    staleTime: 15000,
+  });
+  const markAllMut = useMutation({
+    mutationFn: () => api.markAllRead(),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-notifications"] }); qc.invalidateQueries({ queryKey: ["vendor-notifs-count"] }); },
+  });
+
+  const notifs: DashNotification[] = (data?.notifications || []).slice(0, 5);
+  const unread: number = data?.unread || 0;
+
+  return (
+    <div className={CARD}>
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🔔</span>
+          <p className="font-bold text-gray-800 text-sm">Recent Notifications</p>
+          {unread > 0 && <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{unread} unread</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {unread > 0 && (
+            <button onClick={() => markAllMut.mutate()} disabled={markAllMut.isPending}
+              className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-lg">
+              ✓ Mark all read
+            </button>
+          )}
+          <Link href="/notifications" className="text-[11px] font-bold text-gray-400 hover:text-orange-500">View all →</Link>
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="p-4 space-y-2">
+          {[1,2,3].map(i => <div key={i} className="h-12 skeleton rounded-xl"/>)}
+        </div>
+      ) : notifs.length === 0 ? (
+        <div className="px-4 py-8 text-center">
+          <p className="text-3xl mb-2">🔔</p>
+          <p className="text-sm font-bold text-gray-500">All caught up!</p>
+          <p className="text-xs text-gray-400 mt-1">No new notifications</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {notifs.map(n => (
+            <div key={n.id} className={`px-4 py-3 flex items-start gap-3 ${!n.isRead ? "bg-orange-50/30" : ""}`}>
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-base ${!n.isRead ? "bg-orange-100" : "bg-gray-100"}`}>
+                {typeIcon(n.type)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-bold leading-snug ${!n.isRead ? "text-gray-900" : "text-gray-700"}`}>{n.title}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed line-clamp-1">{n.body}</p>
+                <p className="text-[10px] text-gray-400 mt-1">{fd(n.createdAt)}</p>
+              </div>
+              {!n.isRead && <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1.5"/>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const DAYS: { key: string; label: string }[] = [
   { key: "mon", label: "Monday" },
@@ -406,6 +514,9 @@ export default function Dashboard() {
           );
         })()}
 
+        {/* Quick Actions */}
+        <QuickActions />
+
         {/* Weekly Store Schedule Editor */}
         <ScheduleEditor
           storeHours={(user as any)?.storeHours}
@@ -508,6 +619,9 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Notifications Section */}
+        <NotificationsSection />
 
         {/* Active Tracker Banner — bottom position */}
         {config.content.trackerBannerEnabled && config.content.trackerBannerPosition === "bottom" && activeOrders.length > 0 && (

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
-import { CARD, BTN_PRIMARY, BTN_SECONDARY, errMsg } from "../lib/ui";
+import { CARD, BTN_PRIMARY, BTN_SECONDARY, errMsg, fc } from "../lib/ui";
 import { useCurrency, usePlatformConfig, formatDateTz } from "../lib/useConfig";
 
 type Participation = {
@@ -137,6 +137,46 @@ function CampaignCard({ campaign, onJoin, onWithdraw, joining, withdrawing, curr
   );
 }
 
+function PerformancePanel({ campaignId }: { campaignId: string }) {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["campaign-performance", campaignId],
+    queryFn: () => apiFetch(`/promotions/vendor/campaigns/${campaignId}/performance`),
+    retry: 1,
+    staleTime: 60_000,
+  });
+  const { symbol: currencySymbol } = useCurrency();
+
+  if (isLoading) return <div className="h-20 animate-pulse bg-gray-50 rounded-xl"/>;
+  if (isError || !data) return (
+    <div className="text-xs text-center text-gray-400 py-3">
+      Could not load performance.{" "}
+      <button onClick={() => refetch()} className="text-orange-500 font-bold underline">Retry</button>
+    </div>
+  );
+
+  const metrics = [
+    { label: "Impressions", value: (data.impressions ?? 0).toLocaleString(), icon: "👁️" },
+    { label: "Clicks",      value: (data.clicks ?? 0).toLocaleString(),      icon: "🖱️" },
+    { label: "Orders",      value: (data.orders ?? 0).toLocaleString(),       icon: "📦" },
+    { label: "Revenue",     value: fc(data.revenue ?? 0, currencySymbol),      icon: "💰" },
+  ];
+
+  return (
+    <div className="bg-indigo-50 rounded-xl p-3 mt-2">
+      <p className="text-[10px] font-extrabold text-indigo-400 uppercase tracking-widest mb-2">Campaign Performance</p>
+      <div className="grid grid-cols-4 gap-2">
+        {metrics.map(m => (
+          <div key={m.label} className="text-center">
+            <p className="text-base">{m.icon}</p>
+            <p className="text-sm font-extrabold text-indigo-800 mt-0.5">{m.value}</p>
+            <p className="text-[9px] text-indigo-500 font-medium">{m.label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Campaigns() {
   const qc = useQueryClient();
   const { symbol: currencySymbol } = useCurrency();
@@ -145,6 +185,7 @@ export default function Campaigns() {
   const [toast, setToast] = useState("");
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+  const [perfOpen, setPerfOpen] = useState<string | null>(null);
 
   const showToast = (m: string) => {
     setToast(m);
@@ -243,16 +284,28 @@ export default function Campaigns() {
                 </h2>
                 <div className="space-y-3">
                   {participating.map(campaign => (
-                    <CampaignCard
-                      key={campaign.id}
-                      campaign={campaign}
-                      onJoin={() => {}}
-                      onWithdraw={(pid) => withdrawMut.mutate(pid)}
-                      joining={false}
-                      withdrawing={withdrawingId === campaign.participation?.id}
-                      currencySymbol={currencySymbol}
-                      tz={tz}
-                    />
+                    <div key={campaign.id}>
+                      <CampaignCard
+                        campaign={campaign}
+                        onJoin={() => {}}
+                        onWithdraw={(pid) => withdrawMut.mutate(pid)}
+                        joining={false}
+                        withdrawing={withdrawingId === campaign.participation?.id}
+                        currencySymbol={currencySymbol}
+                        tz={tz}
+                      />
+                      {campaign.participation?.status === "approved" && (
+                        <div className="mt-1.5">
+                          <button
+                            onClick={() => setPerfOpen(perfOpen === campaign.id ? null : campaign.id)}
+                            className="w-full text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 py-2 rounded-xl transition-colors"
+                          >
+                            {perfOpen === campaign.id ? "▲ Hide Performance" : "📊 View Performance"}
+                          </button>
+                          {perfOpen === campaign.id && <PerformancePanel campaignId={campaign.id} />}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

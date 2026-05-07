@@ -249,6 +249,8 @@ export const api = {
   /* Profile */
   getMe:         (signal?: AbortSignal) => apiFetch("/vendor/me", signal ? { signal } : {}),
   updateProfile: (data: Record<string, string | undefined>) => apiFetch("/vendor/profile", { method: "PATCH", body: JSON.stringify(data) }),
+  getQuickReplies:    () => apiFetch("/vendor/profile/quick-replies"),
+  updateQuickReplies: (quickReplies: string[]) => apiFetch("/vendor/profile/quick-replies", { method: "PATCH", body: JSON.stringify({ quickReplies }) }),
 
   /* Store management */
   getStore:      () => apiFetch("/vendor/store"),
