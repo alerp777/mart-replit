@@ -229,21 +229,31 @@ function ShortcutsModal({ shortcuts, onSave, onClose }: { shortcuts: string[]; o
                         <div className="divide-y divide-gray-50">
                           {group.items.map(item => {
                             const alreadyAdded = list.includes(item);
+                            const listFull = list.length >= MAX_SHORTCUTS;
                             return (
-                              <button
-                                key={item}
-                                disabled={alreadyAdded}
-                                onClick={() => { setNewText(item); setShowSuggestions(false); setOpenCategory(null); }}
-                                className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between gap-2 transition
-                                  ${alreadyAdded ? "text-gray-300 bg-white cursor-not-allowed" : "text-gray-700 bg-white hover:bg-orange-50 hover:text-orange-700"}`}
-                              >
-                                <span>{item}</span>
+                              <div key={item} className="flex items-center bg-white px-3 py-2 gap-2">
+                                <span className={`flex-1 text-sm ${alreadyAdded ? "text-gray-300" : "text-gray-700"}`}>{item}</span>
                                 {alreadyAdded ? (
-                                  <span className="text-[10px] text-gray-300 flex-shrink-0">Added</span>
+                                  <span className="text-[10px] text-gray-300 flex-shrink-0 px-1">Added</span>
                                 ) : (
-                                  <span className="text-[10px] text-orange-400 flex-shrink-0">Use →</span>
+                                  <>
+                                    <button
+                                      onClick={() => { setNewText(item); setShowSuggestions(false); setOpenCategory(null); }}
+                                      className="flex-shrink-0 h-7 px-2.5 rounded-lg border border-orange-200 text-orange-500 text-[11px] font-semibold hover:bg-orange-50 transition"
+                                    >
+                                      Use →
+                                    </button>
+                                    <button
+                                      disabled={listFull}
+                                      onClick={() => { setList(prev => [...prev, item]); }}
+                                      title={listFull ? "List is full" : "Add directly"}
+                                      className="flex-shrink-0 w-7 h-7 rounded-lg bg-orange-500 text-white text-base font-bold flex items-center justify-center hover:bg-orange-600 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                                    >
+                                      +
+                                    </button>
+                                  </>
                                 )}
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
