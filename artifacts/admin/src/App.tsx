@@ -45,8 +45,9 @@ import Parcel from "@/pages/parcel";
 import Products from "@/pages/products";
 import Broadcast from "@/pages/broadcast";
 import Transactions from "@/pages/transactions";
-import RevenueAnalytics from "@/pages/revenue-analytics";
 import Settings from "@/pages/settings";
+const AnalyticsPage     = lazy(() => import("@/pages/analytics"));
+const BusinessRulesPage = lazy(() => import("@/pages/business-rules"));
 import FlashDeals from "@/pages/flash-deals";
 import Categories from "@/pages/categories";
 import Banners from "@/pages/banners";
@@ -72,20 +73,16 @@ import ReviewsPage from "@/pages/reviews";
 import KycPage from "@/pages/kyc";
 import VanService from "@/pages/van";
 import DeliveryAccess from "@/pages/delivery-access";
-import AccountConditions from "@/pages/account-conditions";
-import ConditionRules from "@/pages/condition-rules";
 import Popups from "@/pages/popups";
 import PromotionsHub from "@/pages/promotions-hub";
 import SupportChat from "@/pages/support-chat";
 import FaqManagement from "@/pages/faq-management";
-import SearchAnalytics from "@/pages/search-analytics";
 const ErrorMonitor = lazy(() => import("@/pages/error-monitor"));
 const Communication = lazy(() => import("@/pages/communication"));
 const Communications = lazy(() => import("@/pages/communications"));
 import Loyalty from "@/pages/loyalty";
 import WalletTransfers from "@/pages/wallet-transfers";
 import ChatMonitor from "@/pages/chat-monitor";
-import WishlistInsights from "@/pages/wishlist-insights";
 import QrCodes from "@/pages/qr-codes";
 import Experiments from "@/pages/experiments";
 import WebhookManager from "@/pages/webhook-manager";
@@ -93,7 +90,7 @@ import DeepLinks from "@/pages/deep-links";
 import Forbidden from "@/pages/forbidden";
 import LaunchControl from "@/pages/launch-control";
 import OtpControl from "@/pages/otp-control";
-import SmsGateways from "@/pages/sms-gateways";
+
 import AuthMethods from "@/pages/auth-methods";
 import AuditLogs from "@/pages/audit-logs";
 import WhatsAppDeliveryLog from "@/pages/whatsapp-delivery-log";
@@ -349,7 +346,8 @@ function Router() {
       <Route path="/broadcast"><RedirectTo to="/communications?tab=send" /></Route>
       <Route path="/communications"><ProtectedRoute component={Communications} requiredPermission="support.broadcast.send" /></Route>
       <Route path="/transactions"><ProtectedRoute component={Transactions} requiredPermission="finance.transactions.view" /></Route>
-      <Route path="/revenue-analytics"><ProtectedRoute component={RevenueAnalytics} requiredPermission="finance.transactions.view" /></Route>
+      <Route path="/revenue-analytics"><RedirectTo to="/analytics?tab=revenue" /></Route>
+      <Route path="/analytics"><ProtectedRoute component={AnalyticsPage} requiredPermission="finance.transactions.view" /></Route>
       {/*
         Settings hub deep links: `/settings/:section` and
         `/settings/:section/:subsection`. The hub component reads route
@@ -376,26 +374,27 @@ function Router() {
       <Route path="/kyc"><ProtectedRoute component={KycPage} requiredPermission="finance.kyc.view" /></Route>
       <Route path="/van"><ProtectedRoute component={VanService} requiredPermission="fleet.rides.view" /></Route>
       <Route path="/delivery-access"><ProtectedRoute component={DeliveryAccess} requiredPermission="vendors.view" /></Route>
-      <Route path="/account-conditions"><ProtectedRoute component={AccountConditions} requiredPermission="system.settings.view" /></Route>
-      <Route path="/condition-rules"><ProtectedRoute component={ConditionRules} requiredPermission="system.settings.view" /></Route>
+      <Route path="/account-conditions"><RedirectTo to="/business-rules?tab=conditions" /></Route>
+      <Route path="/condition-rules"><RedirectTo to="/business-rules?tab=rules" /></Route>
       <Route path="/popups"><ProtectedRoute component={Popups} requiredPermission="content.products.view" /></Route>
       <Route path="/promotions"><ProtectedRoute component={PromotionsHub} requiredPermission="promotions.view" /></Route>
       <Route path="/support-chat"><ProtectedRoute component={SupportChat} requiredPermission="support.chat.view" /></Route>
       <Route path="/faq-management"><ProtectedRoute component={FaqManagement} requiredPermission="content.products.view" /></Route>
-      <Route path="/search-analytics"><ProtectedRoute component={SearchAnalytics} requiredPermission="system.settings.view" /></Route>
+      <Route path="/search-analytics"><RedirectTo to="/analytics?tab=search" /></Route>
       <Route path="/error-monitor"><ProtectedRoute component={ErrorMonitor} requiredPermission="system.settings.view" /></Route>
       <Route path="/communication"><RedirectTo to="/communications?tab=kpis" /></Route>
       <Route path="/loyalty"><ProtectedRoute component={Loyalty} requiredPermission="promotions.view" /></Route>
       <Route path="/wallet-transfers"><ProtectedRoute component={WalletTransfers} requiredPermission="finance.transactions.view" /></Route>
       <Route path="/chat-monitor"><ProtectedRoute component={ChatMonitor} requiredPermission="support.chat.view" /></Route>
-      <Route path="/wishlist-insights"><ProtectedRoute component={WishlistInsights} requiredPermission="content.products.view" /></Route>
+      <Route path="/wishlist-insights"><RedirectTo to="/analytics?tab=users" /></Route>
+      <Route path="/business-rules"><ProtectedRoute component={BusinessRulesPage} requiredPermission="system.settings.view" /></Route>
       <Route path="/qr-codes"><ProtectedRoute component={QrCodes} requiredPermission="content.products.view" /></Route>
       <Route path="/experiments"><ProtectedRoute component={Experiments} requiredPermission="system.settings.view" /></Route>
       <Route path="/webhooks"><ProtectedRoute component={WebhookManager} requiredPermission="system.settings.view" /></Route>
       <Route path="/deep-links"><ProtectedRoute component={DeepLinks} requiredPermission="content.products.view" /></Route>
       <Route path="/launch-control"><ProtectedRoute component={LaunchControl} requiredPermission="system.maintenance" /></Route>
       <Route path="/otp-control"><ProtectedRoute component={OtpControl} requiredPermission="system.settings.edit" /></Route>
-      <Route path="/sms-gateways"><ProtectedRoute component={SmsGateways} requiredPermission="system.settings.view" /></Route>
+      <Route path="/sms-gateways"><RedirectTo to="/communications?tab=settings" /></Route>
       <Route path="/auth-methods"><ProtectedRoute component={AuthMethods} requiredPermission="system.settings.edit" /></Route>
       <Route path="/roles-permissions"><ProtectedRoute component={RolesPermissions} requiredPermission="system.roles.manage" /></Route>
       <Route path="/audit-logs"><ProtectedRoute component={AuditLogs} requiredPermission="system.audit.view" /></Route>

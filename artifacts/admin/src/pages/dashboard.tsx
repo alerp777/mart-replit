@@ -1,7 +1,7 @@
 import { useCallback, useState, useId } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, StatCard } from "@/components/shared";
-import { Users, ShoppingBag, Car, Pill, Box, Settings, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard, Loader2, X } from "lucide-react";
+import { Users, ShoppingBag, Car, Pill, Box, Settings, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard, Loader2, X, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { useStats, useRevenueTrend, useLeaderboard } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -339,6 +339,38 @@ export default function Dashboard() {
           </Card>
         </HeroCardLink>
       </div>
+
+      {/* Quick Actions */}
+      <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-border/30 flex items-center justify-between bg-card">
+          <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500" /> Quick Actions
+          </h2>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-0 divide-x divide-y divide-border/30">
+          {[
+            { label: "Orders",      href: "/orders",       icon: ShoppingBag, color: "text-amber-600",  bg: "hover:bg-amber-50" },
+            { label: "Users",       href: "/users",        icon: Users,       color: "text-blue-600",   bg: "hover:bg-blue-50" },
+            { label: "Riders",      href: "/riders",       icon: Car,         color: "text-indigo-600", bg: "hover:bg-indigo-50" },
+            { label: "Withdrawals", href: "/withdrawals",  icon: Wallet,      color: "text-green-600",  bg: "hover:bg-green-50" },
+            { label: "KYC",         href: "/kyc",          icon: Trophy,      color: "text-teal-600",   bg: "hover:bg-teal-50" },
+            { label: "Analytics",   href: "/analytics",    icon: TrendingUp,  color: "text-pink-600",   bg: "hover:bg-pink-50" },
+            { label: "Settings",    href: "/settings",     icon: Settings,    color: "text-slate-600",  bg: "hover:bg-slate-50" },
+            { label: "SOS Alerts",  href: "/sos-alerts",   icon: AlertTriangle, color: "text-red-600", bg: "hover:bg-red-50" },
+          ].map(action => (
+            <Link key={action.href} href={action.href}>
+              <div className={`flex flex-col items-center justify-center gap-2 p-4 cursor-pointer transition-colors ${action.bg} group`}>
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center bg-white border border-border/50 shadow-sm group-hover:shadow transition-shadow`}>
+                  <action.icon className={`w-4 h-4 ${action.color}`} />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors text-center leading-tight">
+                  {action.label}
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </Card>
 
       {/* Revenue Breakdown */}
       <div>
