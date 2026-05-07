@@ -3,6 +3,7 @@ import { useAuth } from "../lib/auth";
 import { apiFetch, api } from "../lib/api";
 import { io, type Socket } from "socket.io-client";
 import { SafeImage } from "../components/ui/SafeImage";
+import { getTurnIceServers } from "../lib/turnIceServers";
 
 interface OtherUser { id: string; name: string | null; ajkId: string | null; roles?: string | null; }
 interface Conversation { id: string; otherUser: OtherUser; lastMessage: { content: string } | null; unreadCount: number; lastMessageAt: string | null; }
@@ -455,7 +456,7 @@ export default function Chat() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       localStreamRef.current = stream;
 
-      const pc = new RTCPeerConnection({ iceServers: data.iceServers });
+      const pc = new RTCPeerConnection({ iceServers: [...(data.iceServers ?? []), ...getTurnIceServers()] });
       pcRef.current = pc;
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
@@ -491,7 +492,7 @@ export default function Chat() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     localStreamRef.current = stream;
 
-    const iceServers = answerData.iceServers || [{ urls: "stun:stun.l.google.com:19302" }];
+    const iceServers = [...(answerData.iceServers || [{ urls: "stun:stun.l.google.com:19302" }]), ...getTurnIceServers()];
     const pc = new RTCPeerConnection({ iceServers });
     pcRef.current = pc;
     stream.getTracks().forEach(t => pc.addTrack(t, stream));

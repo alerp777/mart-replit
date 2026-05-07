@@ -279,7 +279,7 @@ export default function Dashboard() {
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const qc = useQueryClient();
-  const { isOnline } = useOfflineQueue();
+  const { isOnline, pendingProductCount } = useOfflineQueue();
   const [toast, setToast] = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
   const [pendingOrderIds, setPendingOrderIds] = useState<Set<string>>(new Set());
@@ -459,6 +459,22 @@ export default function Dashboard() {
               <p className="font-bold text-red-700 text-sm">{stats.lowStock} Products Low on Stock</p>
               <p className="text-red-500 text-xs mt-0.5">Go to Products → update stock</p>
             </div>
+          </div>
+        )}
+
+        {/* Pending Product Sync Badge */}
+        {pendingProductCount > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 md:mb-6">
+            <span className="text-2xl">⏳</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-amber-800 text-sm">
+                {pendingProductCount} product change{pendingProductCount > 1 ? "s" : ""} pending sync
+              </p>
+              <p className="text-amber-600 text-xs mt-0.5">Go online to sync your product updates</p>
+            </div>
+            <span className="text-xs font-bold bg-amber-200 text-amber-800 px-2.5 py-1 rounded-full flex-shrink-0">
+              {pendingProductCount}
+            </span>
           </div>
         )}
 

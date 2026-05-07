@@ -10,6 +10,7 @@ import { PullToRefresh } from "../components/PullToRefresh";
 import { ImageUploader } from "../components/ImageUploader";
 import { SafeImage } from "../components/ui/SafeImage";
 import { fc, fd, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
+import { useOfflineQueue } from "../hooks/useOfflineQueue";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart", videoUrl:"", tags:"", isHidden: false };
 const EMPTY_ROW = { name:"", price:"", description:"", image:"", category:"", unit:"", stock:"", type:"mart" };
@@ -68,6 +69,7 @@ function StockHistoryPanel({ productId }: { productId: string }) {
 
 export default function Products() {
   const qc = useQueryClient();
+  const { isOnline, pendingProductCount, productQueueErrors, enqueueProductAction } = useOfflineQueue();
   const { config } = usePlatformConfig();
   const { symbol: currencySymbol, code: currencyCode } = useCurrency();
   const { language } = useLanguage();
@@ -190,17 +192,41 @@ export default function Products() {
 
   const createMut = useMutation({
     mutationFn: () => {
+      if (!isOnline) {
+        const payload = { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined, videoUrl: form.videoUrl || undefined, tags: tagsFromForm(form.tags), isHidden: form.isHidden };
+        enqueueProductAction("create", payload as Record<string, unknown>);
+        setShowAdd(false);
+        setForm({ ...EMPTY });
+        showToast("📥 Saved offline — will sync when connected");
+        return Promise.resolve(null);
+      }
       if (totalProductCount === null) throw new Error("Cannot verify product count — please wait and try again.");
       if (totalProductCount >= maxItems) throw new Error(`Product limit of ${maxItems} reached. Delete existing products to add new ones.`);
       return api.createProduct({ ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined, videoUrl: form.videoUrl || undefined, tags: tagsFromForm(form.tags), isHidden: form.isHidden });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setShowAdd(false); setForm({ ...EMPTY }); showToast("✅ Product added!"); },
+    onSuccess: (result) => {
+      if (result === null) return;
+      qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setShowAdd(false); setForm({ ...EMPTY }); showToast("✅ Product added!");
+    },
     onError: (e: Error) => showToast("❌ " + errMsg(e)),
   });
 
   const updateMut = useMutation({
-    mutationFn: () => api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setEditProd(null); setShowAdd(false); showToast("✅ Updated!"); },
+    mutationFn: () => {
+      if (!isOnline) {
+        const payload = { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden };
+        enqueueProductAction("update", payload as Record<string, unknown>, editProd.id);
+        setEditProd(null);
+        setShowAdd(false);
+        showToast("📥 Saved offline — will sync when connected");
+        return Promise.resolve(null);
+      }
+      return api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden });
+    },
+    onSuccess: (result) => {
+      if (result === null) return;
+      qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setEditProd(null); setShowAdd(false); showToast("✅ Updated!");
+    },
     onError: (e: Error) => showToast("❌ " + errMsg(e)),
   });
 
@@ -694,6 +720,33 @@ export default function Products() {
       </div>
 
       <div className="px-4 py-4 space-y-3 md:px-0 md:py-4">
+        {(pendingProductCount > 0 || productQueueErrors.length > 0) && (
+          <div className={`rounded-2xl px-4 py-3 border ${productQueueErrors.length > 0 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+            <div className="flex items-center gap-3">
+              <span className="text-xl flex-shrink-0">{productQueueErrors.length > 0 ? "❌" : "⏳"}</span>
+              <div className="flex-1 min-w-0">
+                {pendingProductCount > 0 && (
+                  <p className="text-sm font-bold text-amber-800">
+                    {pendingProductCount} product change{pendingProductCount > 1 ? "s" : ""} pending sync
+                  </p>
+                )}
+                {productQueueErrors.length > 0 && (
+                  <div className="mt-1 space-y-1">
+                    {productQueueErrors.map(err => (
+                      <p key={err.id} className="text-xs text-red-600 font-medium">
+                        Failed to sync {err.action} {err.productId ? `(#${err.productId.slice(-6)})` : ""}: {err.message}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {pendingProductCount > 0 && productQueueErrors.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-0.5">Will sync automatically when you reconnect</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {lowStock.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-3">
             <span className="text-xl">⚠️</span>

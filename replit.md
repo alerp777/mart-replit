@@ -121,6 +121,7 @@ All credentials and secrets are managed via **Replit Secrets** (the padlock icon
 | Infrastructure | `REDIS_URL`, `SENTRY_DSN` |
 | Runtime | `NODE_ENV`, `LOG_LEVEL` |
 | Expo / Vite | `EXPO_PUBLIC_DOMAIN`, `VITE_API_BASE_URL`, `VITE_API_PROXY_TARGET` |
+| WebRTC / TURN | `VITE_TURN_SERVER_URL`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` |
 
 ### Security & Observability (Task #1 hardening — 2025)
 
