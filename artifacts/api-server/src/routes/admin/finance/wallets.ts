@@ -23,6 +23,7 @@ import {
 import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../../lib/response.js";
 import { FinanceService } from "../../../services/admin-finance.service.js";
 import { AuditService } from "../../../services/admin-audit.service.js";
+import { getIO } from "../../../lib/socketio.js";
 
 const router = Router();
 router.get("/transactions", async (_req, res) => {
@@ -655,6 +656,8 @@ router.patch("/deposit-requests/:id/approve", async (req, res) => {
     body: t("notifDepositCreditedBody", depApprLang).replace("{amount}", amt.toFixed(0)),
     type: "wallet", icon: "wallet-outline",
   }).catch(e => logger.error("deposit approval notif failed:", e));
+  const fleetIo = getIO();
+  if (fleetIo) fleetIo.to("admin-fleet").emit("wallet:deposit-approved", { txId, userId: tx.userId, amount: amt });
   sendSuccess(res, { txId, status: "approved", credited: amt });
 });
 

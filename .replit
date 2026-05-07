@@ -109,7 +109,7 @@ EXPO_PUBLIC_DOMAIN = "localhost:5000"
 VITE_API_BASE_URL = "http://localhost:5000"
 ADMIN_LEGACY_AUTH_DISABLED = "0"
 ADMIN_PASSWORD_RESET_TOKEN_TTL_MIN = "15"
-ADMIN_DEV_PORT = "3001"
+ADMIN_DEV_PORT = "3002"
 JWT_SECRET = "70d7bbb271fc1cf1a6397e8407153c9212f0e27c4b1b38c3f56ec08701718bc3849fe94eebaaed82f47d1cd93830ca7fe3255983484582511c8860cbec76f7cb"
 ADMIN_ACCESS_TOKEN_SECRET = "4155520e37c912db3f619ba139da551f3929df71a3501bc38bac7555f6d91b48875605d6e32b2a7ef66c68069f12f00cf212545db6aa440495089cfb9ad67dad"
 ADMIN_REFRESH_TOKEN_SECRET = "3c55bd900ca69183a11dc19b0472308ea6056d393b67228364a2fdd36c9c4d5e1bf6a8087a9f23789e01e9e90dbc577107fdb129bd2980dcbd5f3c87dc13bdcb"
@@ -135,7 +135,10 @@ id = "module:nodejs-24/languageServer:typescript-language-server"
 
 [[ports]]
 localPort = 3000
-externalPort = 3000
+
+[[ports]]
+localPort = 3001
+externalPort = 6000
 
 [[ports]]
 localPort = 3002
@@ -196,7 +199,3 @@ externalPort = 3000
 [[ports]]
 localPort = 23745
 externalPort = 9000
-
-[[ports]]
-localPort = 3001
-externalPort = 3001

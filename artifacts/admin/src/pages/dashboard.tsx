@@ -2,6 +2,7 @@ import { useCallback, useState, useId, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, StatCard } from "@/components/shared";
 import { Users, ShoppingBag, Car, Pill, Box, Settings, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard, Loader2, X, Zap, UserCheck, Search } from "lucide-react";
+import { ActivityFeed } from "@/components/ui/ActivityFeed";
 import { Link } from "wouter";
 import { useStats, useRevenueTrend, useLeaderboard, useRides, useRiders, useAdminReassignRide, useBroadcast } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -845,6 +846,9 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+
+      {/* Live Activity Feed */}
+      <ActivityFeed maxVisible={12} />
 
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-8">
