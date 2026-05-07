@@ -657,13 +657,24 @@ const auditLogHandler = async (req: import("express").Request, res: import("expr
   const search  = req.query["search"]  as string | undefined;
   const adminId = req.query["adminId"] as string | undefined;
 
+  /* Role restriction: non-super_admin callers only see their own entries */
+  const callerRole = (req as AdminRequest).adminRole ?? "";
+  const callerId   = (req as AdminRequest).adminId   ?? "";
+  const isSuperAdmin = callerRole === "super_admin" || callerRole === "super";
+  const restricted = !isSuperAdmin;
+
   try {
     const conditions: SQL[] = [];
     if (action)  conditions.push(ilike(adminActionAuditLogTable.action, `%${action}%`));
     if (result)  conditions.push(eq(adminActionAuditLogTable.result, result));
     if (from)    conditions.push(gte(adminActionAuditLogTable.createdAt, new Date(from)));
     if (to)      conditions.push(lte(adminActionAuditLogTable.createdAt, new Date(to)));
-    if (adminId) conditions.push(eq(adminActionAuditLogTable.adminId, adminId));
+    /* Honour explicit adminId filter but never let non-super_admin query other admins */
+    if (restricted) {
+      conditions.push(eq(adminActionAuditLogTable.adminId, callerId));
+    } else if (adminId) {
+      conditions.push(eq(adminActionAuditLogTable.adminId, adminId));
+    }
     if (search) {
       const q = `%${search}%`;
       conditions.push(or(
@@ -694,7 +705,6 @@ const auditLogHandler = async (req: import("express").Request, res: import("expr
         details:          adminActionAuditLogTable.details,
         ip:               adminActionAuditLogTable.ip,
         adminId:          adminActionAuditLogTable.adminId,
-        // Prefer denormalized name; fall back to live join if missing
         adminName:        sql<string | null>`COALESCE(${adminActionAuditLogTable.adminName}, ${adminAlias.name})`,
         affectedUserId:   adminActionAuditLogTable.affectedUserId,
         affectedUserName: sql<string | null>`COALESCE(${adminActionAuditLogTable.affectedUserName}, ${userAlias.name}, ${userAlias.phone})`,
@@ -720,15 +730,18 @@ const auditLogHandler = async (req: import("express").Request, res: import("expr
       page,
       limit,
       totalPages: Math.ceil(Number(total) / limit),
+      restricted,
     });
   } catch (err) {
-    // Fallback to in-memory ring buffer if DB query fails
     logger.warn({ err }, "[audit-log] DB query failed, falling back to in-memory buffer");
-    let entries = [...auditLog];
+    let entries = restricted
+      ? [...auditLog].filter(e => e.adminId === callerId)
+      : [...auditLog];
     if (action) entries = entries.filter(e => e.action.includes(action));
     if (result) entries = entries.filter(e => e.result === result);
     if (from)   entries = entries.filter(e => new Date(e.timestamp) >= new Date(from));
     if (to)     entries = entries.filter(e => new Date(e.timestamp) <= new Date(to));
+    if (!restricted && adminId) entries = entries.filter(e => e.adminId === adminId);
     if (search) {
       const q = search.toLowerCase();
       entries = entries.filter(e =>
@@ -741,11 +754,64 @@ const auditLogHandler = async (req: import("express").Request, res: import("expr
       );
     }
     const total = entries.length;
-    sendSuccess(res, { entries: entries.slice((page - 1) * limit, page * limit), total, page, limit, totalPages: Math.ceil(total / limit) });
+    sendSuccess(res, { entries: entries.slice((page - 1) * limit, page * limit), total, page, limit, totalPages: Math.ceil(total / limit), restricted });
   }
 };
 router.get("/audit-log",  adminAuth, auditLogHandler);
 router.get("/audit-logs", adminAuth, auditLogHandler);
+
+/* ── GET /api/admin/me/preferences — per-admin UI preferences ── */
+router.get("/me/preferences", adminAuth, async (req, res) => {
+  const adminId = (req as AdminRequest).adminId;
+  if (!adminId) { sendForbidden(res, "Not authenticated"); return; }
+  try {
+    const [row] = await db
+      .select({ id: adminAccountsTable.id, preferences: sql<string | null>`preferences` })
+      .from(adminAccountsTable)
+      .where(eq(adminAccountsTable.id, adminId))
+      .limit(1);
+    let prefs: Record<string, unknown> = {};
+    if (row) {
+      const raw = (row as any).preferences;
+      if (raw !== null && raw !== undefined) {
+        if (typeof raw === "object") {
+          prefs = raw as Record<string, unknown>;
+        } else {
+          try { prefs = JSON.parse(raw as string); } catch { prefs = {}; }
+        }
+      }
+    }
+    sendSuccess(res, { preferences: prefs });
+  } catch {
+    sendSuccess(res, { preferences: {} });
+  }
+});
+
+/* ── PUT /api/admin/me/preferences — save per-admin UI preferences ── */
+router.put("/me/preferences", adminAuth, async (req, res) => {
+  const adminId = (req as AdminRequest).adminId;
+  if (!adminId) { sendForbidden(res, "Not authenticated"); return; }
+  const body = req.body as Record<string, unknown>;
+  if (!body || typeof body !== "object") { sendValidationError(res, "preferences object required"); return; }
+  const allowed: Record<string, unknown> = {};
+  if (typeof body["font_scale"] === "number") allowed["font_scale"] = body["font_scale"];
+  if (typeof body["contrast"] === "string") allowed["contrast"] = body["contrast"];
+  if (typeof body["reduce_motion"] === "boolean") allowed["reduce_motion"] = body["reduce_motion"];
+  const prefsJson = JSON.stringify(allowed);
+  try {
+    await db.execute(sql`
+      ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS preferences JSONB
+    `);
+    await db.execute(sql`
+      UPDATE admin_accounts SET preferences = ${prefsJson}::jsonb WHERE id = ${adminId}
+    `);
+  } catch (err) {
+    logger.warn({ err }, "[admin/me/preferences] PUT failed — returning browser-only response");
+    sendSuccess(res, { preferences: allowed, persisted: false });
+    return;
+  }
+  sendSuccess(res, { preferences: allowed, persisted: true });
+});
 
 /* ── GET /admin/auth-audit-log — persistent auth event log from DB ── */
 router.get("/auth-audit-log", adminAuth, async (req, res) => {

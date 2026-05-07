@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Zap, Plus, Pencil, Trash2, Save,
@@ -18,6 +18,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { StatusBadge } from "@/components/AdminShared";
 import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
+import { NavigationGuard } from "@/components/NavigationGuard";
 
 /* ── Types ── */
 interface Product { id: string; name: string; price: string | number; category: string; image?: string }
@@ -45,12 +46,58 @@ function future8601(hours = 24) {
   return d.toISOString().slice(0,16);
 }
 
+/* ── Server-time offset hook ── */
+function useServerOffset(): number {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    fetch("/api/health")
+      .then(r => r.json())
+      .then((data: any) => {
+        const serverTime = new Date(data?.timestamp ?? data?.data?.timestamp ?? Date.now()).getTime();
+        const rtt = Date.now() - start;
+        setOffset(serverTime - (Date.now() - rtt / 2));
+      })
+      .catch(() => {});
+  }, []);
+  return offset;
+}
+
+/* ── Countdown component anchored to server time ── */
+function ServerCountdown({ endTime, serverOffset }: { endTime: string; serverOffset: number }) {
+  const [remaining, setRemaining] = useState(0);
+
+  useEffect(() => {
+    const end = new Date(endTime).getTime();
+    const tick = () => {
+      const now = Date.now() + serverOffset;
+      setRemaining(Math.max(0, end - now));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [endTime, serverOffset]);
+
+  if (remaining <= 0) return <span className="text-xs text-red-500 font-mono">Expired</span>;
+
+  const totalSec = Math.floor(remaining / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const label = h > 0
+    ? `${h}h ${m}m ${s}s`
+    : `${m}m ${s}s`;
+
+  return <span className="text-xs font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">{label}</span>;
+}
+
 /* ══════════ Main Page ══════════ */
 export default function FlashDealsPage() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const { toast } = useToast();
   const qc = useQueryClient();
+  const serverOffset = useServerOffset();
 
   /* ── Flash Deals state ── */
   const PAGE_SIZE = 50;
@@ -59,6 +106,12 @@ export default function FlashDealsPage() {
   const [editingDeal, setEditingDeal] = useState<FlashDeal|null>(null);
   const [dealDialog, setDealDialog] = useState(false);
   const [deletingDealId, setDeletingDealId] = useState<string | null>(null);
+
+  const isDirty = dealDialog && (
+    dealForm.productId !== EMPTY_DEAL.productId ||
+    dealForm.title !== EMPTY_DEAL.title ||
+    !!dealForm.discountPct || !!dealForm.discountFlat
+  );
 
   /* ── Queries ── */
   const { data: dealsData, isLoading: dealsLoading } = useQuery({
@@ -146,6 +199,7 @@ export default function FlashDealsPage() {
 
   return (
     <div className="space-y-6">
+      <NavigationGuard isDirty={isDirty} />
       <PageHeader
         icon={Zap}
         title={T("flashDeals")}
@@ -180,6 +234,7 @@ export default function FlashDealsPage() {
                   ? `${deal.discountPct}% OFF`
                   : deal.discountFlat ? `Rs. ${deal.discountFlat} OFF` : "Deal";
                 const stockPct = deal.dealStock ? Math.round((deal.soldCount / deal.dealStock) * 100) : null;
+                const isLive = deal.status === "live";
                 return (
                   <Card key={deal.id} className="rounded-2xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
@@ -193,6 +248,9 @@ export default function FlashDealsPage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-bold text-foreground truncate">{deal.title || deal.product?.name || deal.productId}</p>
                             <StatusBadge status={deal.status} />
+                            {isLive && (
+                              <ServerCountdown endTime={deal.endTime} serverOffset={serverOffset} />
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">{deal.product?.category || ""} · {deal.product ? `Rs. ${deal.product.price}` : ""}</p>
                           <div className="flex items-center gap-3 mt-2 flex-wrap">

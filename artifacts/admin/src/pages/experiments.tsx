@@ -12,8 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { SensitiveActionDialog } from "@/components/SensitiveActionDialog";
+import { NavigationGuard } from "@/components/NavigationGuard";
 import {
   FlaskConical, Plus, Loader2, Trash2, BarChart3, Play, Pause, CheckCircle2, MoreHorizontal,
+  AlertTriangle,
 } from "lucide-react";
 
 type Variant = { name: string; weight: number };
@@ -28,6 +31,7 @@ export default function ExperimentsPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [showResults, setShowResults] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [trafficPct, setTrafficPct] = useState(100);
@@ -35,6 +39,11 @@ export default function ExperimentsPage() {
     { name: "control", weight: 50 },
     { name: "variant_b", weight: 50 },
   ]);
+
+  const isDirty = showCreate && (!!name || description !== "" || variants.some(v => v.weight !== 50));
+
+  const totalWeight = variants.reduce((sum, v) => sum + (Number(v.weight) || 0), 0);
+  const weightError = totalWeight !== 100 ? `Variant weights must sum to 100% (currently ${totalWeight}%)` : null;
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["admin-experiments"],
@@ -69,7 +78,7 @@ export default function ExperimentsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetcher(`/experiments/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-experiments"] }); toast({ title: "Experiment deleted" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-experiments"] }); toast({ title: "Experiment deleted" }); setDeletingId(null); },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
@@ -91,8 +100,17 @@ export default function ExperimentsPage() {
     draft: "bg-gray-100 text-gray-600",
   };
 
+  const handleCreate = () => {
+    if (weightError) {
+      toast({ title: "Invalid weights", description: weightError, variant: "destructive" });
+      return;
+    }
+    createMutation.mutate({ name, description, variants, trafficPct });
+  };
+
   return (
     <PullToRefresh onRefresh={async () => { await refetch(); }}>
+      <NavigationGuard isDirty={isDirty} />
       <div className="space-y-6">
         <PageHeader
           icon={FlaskConical}
@@ -177,7 +195,7 @@ export default function ExperimentsPage() {
                           )}
                           <DropdownMenuItem
                             className="text-red-600 focus:text-red-600"
-                            onClick={() => { if (confirm("Delete this experiment?")) deleteMutation.mutate(exp.id); }}
+                            onClick={() => setDeletingId(exp.id)}
                           >
                             <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" /> Delete
                           </DropdownMenuItem>
@@ -237,7 +255,7 @@ export default function ExperimentsPage() {
                             </Button>
                           )}
                           <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700"
-                            onClick={() => { if (confirm("Delete this experiment?")) deleteMutation.mutate(exp.id); }}
+                            onClick={() => setDeletingId(exp.id)}
                             aria-label="Delete experiment">
                             <Trash2 className="w-4 h-4" aria-hidden="true" />
                           </Button>
@@ -268,18 +286,29 @@ export default function ExperimentsPage() {
                 <Input type="number" min={1} max={100} value={trafficPct} onChange={e => setTrafficPct(Number(e.target.value))} />
               </div>
               <div>
-                <label className="text-sm font-medium">Variants</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium">Variants</label>
+                  <span className={`text-xs font-semibold ${totalWeight === 100 ? "text-green-600" : "text-amber-600"}`}>
+                    Total: {totalWeight}% {totalWeight === 100 ? "✓" : "(must be 100%)"}
+                  </span>
+                </div>
+                {weightError && (
+                  <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                    {weightError}
+                  </div>
+                )}
                 <div className="space-y-2 mt-1">
                   {variants.map((v, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <Input value={v.name} onChange={e => {
                         const updated = [...variants];
-                        updated[i] = { ...updated[i], name: e.target.value };
+                        updated[i] = { ...updated[i]!, name: e.target.value };
                         setVariants(updated);
                       }} placeholder="Variant name" className="flex-1" />
                       <Input type="number" value={v.weight} min={0} max={100} onChange={e => {
                         const updated = [...variants];
-                        updated[i] = { ...updated[i], weight: Number(e.target.value) };
+                        updated[i] = { ...updated[i]!, weight: Number(e.target.value) };
                         setVariants(updated);
                       }} placeholder="Weight %" className="w-20" />
                       {variants.length > 2 && (
@@ -294,8 +323,8 @@ export default function ExperimentsPage() {
                   <Plus className="w-3 h-3 mr-1" /> Add Variant
                 </Button>
               </div>
-              <Button className="w-full" disabled={!name || variants.length < 2 || createMutation.isPending}
-                onClick={() => createMutation.mutate({ name, description, variants, trafficPct })}>
+              <Button className="w-full" disabled={!name || variants.length < 2 || createMutation.isPending || !!weightError}
+                onClick={handleCreate}>
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Create Experiment
               </Button>
@@ -335,6 +364,17 @@ export default function ExperimentsPage() {
             )}
           </DialogContent>
         </Dialog>
+
+        <SensitiveActionDialog
+          open={!!deletingId}
+          title="Delete Experiment"
+          description="This experiment and all its assignment data will be permanently deleted. This action cannot be undone."
+          confirmLabel="Delete Experiment"
+          actionType="experiment_delete"
+          targetId={deletingId ?? undefined}
+          onConfirm={() => { if (deletingId) deleteMutation.mutate(deletingId); }}
+          onClose={() => setDeletingId(null)}
+        />
       </div>
     </PullToRefresh>
   );

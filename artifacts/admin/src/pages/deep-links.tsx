@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
@@ -11,10 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import {
-  Link2, Plus, Loader2, Trash2, Copy, MousePointerClick, MoreHorizontal,
+  Link2, Plus, Loader2, Trash2, Copy, MousePointerClick, MoreHorizontal, ExternalLink, QrCode,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 
 const TARGET_SCREENS = [
   { value: "product", label: "Product Page", paramHint: "productId" },
@@ -34,6 +36,22 @@ type DeepLink = {
   params: Record<string, string>; label: string;
   clickCount: number; createdAt: string;
 };
+
+function QrPopover({ url }: { url: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" aria-label="Show QR code">
+          <QrCode className="w-4 h-4" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-4 flex flex-col items-center gap-2" side="left">
+        <QRCodeSVG value={url} size={140} />
+        <p className="text-xs text-muted-foreground text-center max-w-[140px] break-all">{url}</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function DeepLinksPage() {
   const { toast } = useToast();
@@ -101,6 +119,10 @@ export default function DeepLinksPage() {
       .catch(() => toast({ title: "Copy failed", description: "Allow clipboard access and try again.", variant: "destructive" }));
   }
 
+  function testLink(shortCode: string) {
+    window.open(getFullUrl(shortCode), "_blank", "noopener,noreferrer");
+  }
+
   const selectedTarget = TARGET_SCREENS.find(t => t.value === targetScreen);
   const totalClicks = links.reduce((sum, l) => sum + l.clickCount, 0);
 
@@ -165,6 +187,9 @@ export default function DeepLinksPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => copyLink(link.shortCode)}>
                             <Copy className="w-4 h-4 mr-2" aria-hidden="true" /> Copy Link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => testLink(link.shortCode)}>
+                            <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" /> Test Link
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-red-600 focus:text-red-600"
@@ -235,6 +260,10 @@ export default function DeepLinksPage() {
                           <Button variant="ghost" size="sm" onClick={() => copyLink(link.shortCode)} aria-label="Copy link">
                             <Copy className="w-4 h-4" aria-hidden="true" />
                           </Button>
+                          <Button variant="ghost" size="sm" onClick={() => testLink(link.shortCode)} aria-label="Test link">
+                            <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                          <QrPopover url={getFullUrl(link.shortCode)} />
                           <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700"
                             onClick={() => { if (confirm("Delete this deep link?")) deleteMutation.mutate(link.id); }}
                             aria-label="Delete link">

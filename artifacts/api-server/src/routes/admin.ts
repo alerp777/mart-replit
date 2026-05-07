@@ -33,6 +33,7 @@ import smsGatewaysRoutes from "./admin/sms-gateways.js";
 import whitelistRoutes from "./admin/whitelist.js";
 import inventorySettingsRoutes from "./admin/inventory-settings.js";
 import securityRoutes from "./admin/security.js";
+import broadcastsRoutes from "./admin/broadcasts.js";
 
 export {
   DEFAULT_PLATFORM_SETTINGS,
@@ -98,5 +99,6 @@ router.use("/sms-gateways", smsGatewaysRoutes);
 router.use("/whitelist", whitelistRoutes);
 router.use(inventorySettingsRoutes);
 router.use(securityRoutes);
+router.use(broadcastsRoutes);
 
 export default router;

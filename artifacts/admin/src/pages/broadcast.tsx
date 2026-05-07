@@ -1,13 +1,16 @@
 import { useState, useMemo } from "react";
-import { Megaphone, Send, Bell, Users, Loader2 } from "lucide-react";
+import { Megaphone, Send, Bell, Users, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, History } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { useBroadcast, useBroadcastRecipientCount } from "@/hooks/use-admin";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -20,11 +23,25 @@ const ROLE_OPTIONS: { value: AudienceRole; label: string }[] = [
   { value: "admin",    label: "Admins" },
 ];
 
+type BroadcastRecord = {
+  id: string;
+  title: string;
+  body: string;
+  type: string;
+  targetRole?: string;
+  sentCount: number;
+  deliveredCount: number;
+  failedCount: number;
+  adminId?: string;
+  sentAt: string;
+};
+
 export default function Broadcast() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const broadcastMutation = useBroadcast();
   const { toast } = useToast();
+  const qc = useQueryClient();
 
   const [formData, setFormData] = useState({
     title: "",
@@ -32,9 +49,17 @@ export default function Broadcast() {
     type: "system",
     icon: "notifications-outline",
   });
-  /* "all" mode toggles every active user; otherwise pick one or more roles. */
   const [allUsers, setAllUsers] = useState(true);
   const [selectedRoles, setSelectedRoles] = useState<AudienceRole[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ["admin-broadcasts-history"],
+    queryFn: () => fetcher("/broadcasts"),
+    enabled: historyOpen,
+    refetchInterval: historyOpen ? 30_000 : false,
+  });
+  const history: BroadcastRecord[] = historyData?.broadcasts ?? [];
 
   const targetRolesForQuery: string[] | "all" = allUsers ? "all" : selectedRoles;
   const recipientCountQuery = useBroadcastRecipientCount(
@@ -64,7 +89,6 @@ export default function Broadcast() {
     e.preventDefault();
     if (!formData.title || !formData.body || !audienceReady) return;
 
-    /* Backend accepts either undefined (all), a single role string, or an array. */
     const targetRole = allUsers
       ? undefined
       : selectedRoles.length === 1
@@ -83,6 +107,7 @@ export default function Broadcast() {
         setAllUsers(true);
         setSelectedRoles([]);
         recipientCountQuery.refetch();
+        qc.invalidateQueries({ queryKey: ["admin-broadcasts-history"] });
       },
       onError: (err) => {
         toast({ title: "Failed to send", description: err.message, variant: "destructive" });
@@ -243,12 +268,8 @@ export default function Broadcast() {
         <div>
           <h3 className="text-lg font-bold mb-4 ml-1">{T("livePreview")}</h3>
           <div className="w-full max-w-[340px] h-[650px] bg-gray-900 rounded-[3rem] p-4 shadow-2xl relative mx-auto border-8 border-gray-800 flex flex-col overflow-hidden">
-            {/* Phone Notch */}
             <div className="absolute top-0 inset-x-0 h-6 w-32 bg-gray-800 rounded-b-3xl mx-auto z-20"></div>
-
-            {/* Phone Screen */}
             <div className="flex-1 bg-gray-50 rounded-[2rem] overflow-hidden pt-12 p-4 relative">
-              {/* Notification Banner */}
               <div className="w-full bg-white rounded-2xl p-4 shadow-xl border border-gray-100 animate-in slide-in-from-top-4 fade-in duration-500 flex gap-3 relative overflow-hidden">
                 {formData.type === 'promotional' && (
                   <div className="absolute top-0 left-0 w-1 h-full bg-primary"></div>
@@ -270,6 +291,73 @@ export default function Broadcast() {
           </div>
         </div>
       </div>
+
+      {/* ── Recent Broadcasts History ── */}
+      <Card className="rounded-2xl border-border/50">
+        <button
+          className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-muted/30 transition-colors rounded-2xl"
+          onClick={() => setHistoryOpen(o => !o)}
+        >
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-muted-foreground" />
+            <span className="font-semibold text-sm">Recent Broadcasts</span>
+          </div>
+          {historyOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+
+        {historyOpen && (
+          <div className="px-6 pb-5">
+            {historyLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+            ) : history.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No broadcasts sent yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-muted-foreground border-b">
+                      <th className="pb-2 pr-3">Title</th>
+                      <th className="pb-2 pr-3">Audience</th>
+                      <th className="pb-2 pr-3">Sent</th>
+                      <th className="pb-2 pr-3">Delivered</th>
+                      <th className="pb-2 pr-3">Failed</th>
+                      <th className="pb-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map(b => (
+                      <tr key={b.id} className="border-b last:border-0 hover:bg-muted/20">
+                        <td className="py-2.5 pr-3 font-medium truncate max-w-[160px]">{b.title}</td>
+                        <td className="py-2.5 pr-3">
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {b.targetRole ?? "all"}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <span className="font-semibold">{b.sentCount}</span>
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <Badge variant="outline" className="text-xs text-green-700 bg-green-50 border-green-200 gap-1">
+                            <CheckCircle2 className="w-3 h-3" />{b.deliveredCount}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <Badge variant="outline" className={`text-xs gap-1 ${b.failedCount > 0 ? "text-red-700 bg-red-50 border-red-200" : "text-muted-foreground"}`}>
+                            <XCircle className="w-3 h-3" />{b.failedCount}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(b.sentAt).toLocaleString("en-PK", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

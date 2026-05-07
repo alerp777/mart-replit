@@ -1,9 +1,13 @@
-import { FileText } from "lucide-react";
+import { useState } from "react";
+import { FileText, Download, Filter } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared";
 import { fetcher } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import type {
@@ -12,45 +16,74 @@ import type {
   ApiPaginated,
 } from "@/lib/adminApiTypes";
 
-/**
- * Consent Log & Terms Versions — admin surface for the GDPR / consent
- * pipeline.
- *
- * Backend contract (documented in `bugs.md` → "Missing Privacy
- * Notification" / "Missing Privacy Settings"):
- *
- *   GET /api/legal/terms-versions
- *     → { items: TermsVersionRow[], total: number }
- *     Returns every version of every policy slug. The "current"
- *     version is the row with the latest `effectiveAt` timestamp
- *     (`isCurrent: true` set by the backend).
- *
- *   GET /api/legal/consent-log?policy=&version=&userId=&limit=&offset=
- *     → { items: ConsentLogEntry[], total: number }
- *     Paginated audit trail of every accept event. The backend MUST
- *     persist `acceptedAt`, `policy`, `version`, `userId`, IP, and UA.
- *
- *   POST /api/legal/terms-versions
- *     Body: { policy, version, effectiveAt, bodyMarkdown, changelog }
- *     Idempotent on (policy, version). Bumping the version forces a
- *     re-acceptance flow on the mobile clients on next launch.
- *
- * The page renders gracefully when these endpoints aren't yet
- * implemented — react-query surfaces an error and the
- * `<ErrorState>` directs the admin back to the engineering follow-up.
- */
+function exportCsv(entries: ConsentLogEntry[], filename = "consent-log.csv") {
+  const headers = ["User ID", "Policy", "Version", "Accepted At", "Source", "IP Address"];
+  const rows = entries.map(e => [
+    e.userId ?? "",
+    e.policy ?? "",
+    e.version ?? "",
+    new Date(e.acceptedAt).toISOString(),
+    e.source ?? "",
+    e.ipAddress ?? "",
+  ]);
+  const csvContent = [headers, ...rows]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ConsentLogPage() {
+  const [policyFilter, setPolicyFilter] = useState("");
+  const [versionFilter, setVersionFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
+
   const versions = useQuery<ApiPaginated<TermsVersionRow>>({
     queryKey: ["legal", "terms-versions"],
     queryFn: () => fetcher("/legal/terms-versions") as Promise<ApiPaginated<TermsVersionRow>>,
     retry: false,
   });
 
+  function buildQs(limit = 50, offset = 0) {
+    const qs = new URLSearchParams();
+    qs.set("limit", String(limit));
+    qs.set("offset", String(offset));
+    if (policyFilter) qs.set("policy", policyFilter);
+    if (versionFilter && versionFilter !== "all") qs.set("version", versionFilter);
+    if (dateFrom) qs.set("dateFrom", dateFrom);
+    if (dateTo) qs.set("dateTo", dateTo);
+    return qs.toString();
+  }
+
   const log = useQuery<ApiPaginated<ConsentLogEntry>>({
-    queryKey: ["legal", "consent-log"],
-    queryFn: () => fetcher("/legal/consent-log?limit=50") as Promise<ApiPaginated<ConsentLogEntry>>,
+    queryKey: ["legal", "consent-log", policyFilter, versionFilter, dateFrom, dateTo],
+    queryFn: () => fetcher(`/legal/consent-log?${buildQs()}`) as Promise<ApiPaginated<ConsentLogEntry>>,
     retry: false,
   });
+
+  const uniquePolicies = Array.from(new Set((versions.data?.items ?? []).map(v => v.policy)));
+  const policyVersions = (versions.data?.items ?? []).filter(v => !policyFilter || v.policy === policyFilter);
+
+  async function handleExport() {
+    setExportLoading(true);
+    try {
+      const all = await fetcher(`/legal/consent-log?${buildQs(9999, 0)}`) as ApiPaginated<ConsentLogEntry>;
+      exportCsv(all.items ?? [], `consent-log-${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch {
+      /* silently fail */
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  const hasFilters = !!policyFilter || (!!versionFilter && versionFilter !== "all") || !!dateFrom || !!dateTo;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -97,7 +130,65 @@ export default function ConsentLogPage() {
       </Card>
 
       <Card className="p-5">
-        <h2 className="font-semibold mb-3">Consent Log (last 50)</h2>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h2 className="font-semibold">Consent Log</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handleExport}
+            disabled={exportLoading}
+          >
+            <Download className="w-3.5 h-3.5" />
+            {exportLoading ? "Exporting…" : "Export CSV"}
+          </Button>
+        </div>
+
+        {/* Filter bar */}
+        <div className="flex flex-wrap gap-3 mb-4 p-3 bg-muted/40 rounded-xl border">
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Filters:</span>
+          </div>
+          <Select value={policyFilter} onValueChange={v => { setPolicyFilter(v === "all" ? "" : v); setVersionFilter(""); }}>
+            <SelectTrigger className="h-8 w-40 text-xs">
+              <SelectValue placeholder="All policies" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All policies</SelectItem>
+              {uniquePolicies.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={versionFilter} onValueChange={setVersionFilter} disabled={policyVersions.length === 0}>
+            <SelectTrigger className="h-8 w-36 text-xs">
+              <SelectValue placeholder="All versions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All versions</SelectItem>
+              {policyVersions.map(v => <SelectItem key={v.version} value={v.version}>v{v.version}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            className="h-8 w-36 text-xs"
+            placeholder="From"
+          />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            className="h-8 w-36 text-xs"
+            placeholder="To"
+          />
+          {hasFilters && (
+            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setPolicyFilter(""); setVersionFilter(""); setDateFrom(""); setDateTo(""); }}>
+              Clear
+            </Button>
+          )}
+        </div>
+
         {log.isLoading && <LoadingState label="Loading consent log…" variant="card" />}
         {log.isError && (
           <ErrorState
@@ -109,6 +200,7 @@ export default function ConsentLogPage() {
         )}
         {log.data && (
           <>
+            <p className="text-xs text-muted-foreground mb-3">{log.data.total ?? log.data.items.length} record{(log.data.total ?? log.data.items.length) !== 1 ? "s" : ""} found</p>
             {/* Mobile card list */}
             <section className="md:hidden space-y-2 mb-2" aria-label="Consent log">
               {log.data.items.length === 0 ? (

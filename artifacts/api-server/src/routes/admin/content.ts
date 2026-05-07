@@ -335,6 +335,22 @@ router.post("/broadcast", async (req, res) => {
     }).catch(() => {});
     sent++;
   }
+  /* Persist broadcast in history table so the admin panel can show it */
+  try {
+    const broadcastId = generateId();
+    const adminId = (req as any).adminId ?? null;
+    const resolvedTitle = (title as string) || (titleKey as string) || "";
+    const resolvedBody  = (body  as string) || (bodyKey  as string) || "";
+    await db.execute(sql`
+      INSERT INTO broadcasts (id, title, body, type, target_role, sent_count, admin_id, sent_at, created_at)
+      VALUES (
+        ${broadcastId}, ${resolvedTitle}, ${resolvedBody}, ${type as string},
+        ${roles.length > 0 ? roles.join(",") : null},
+        ${sent}, ${adminId}, NOW(), NOW()
+      )
+    `).catch(() => { /* table may not exist yet */ });
+  } catch { /* non-fatal */ }
+
   sendSuccess(res, { success: true, sent, targetRoles: roles.length > 0 ? roles : ["all"] });
 });
 

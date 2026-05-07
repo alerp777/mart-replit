@@ -28,6 +28,7 @@ import { tDual } from "@workspace/i18n";
 import { PaymentSection } from "./settings-payment";
 import { IntegrationsSection } from "./settings-integrations";
 import { SecuritySection } from "./settings-security";
+import { NavigationGuard } from "@/components/NavigationGuard";
 import { SystemSection } from "./settings-system";
 import { WeatherSection } from "./settings-weather";
 import { renderSection, Setting, CatKey, TEXT_KEYS } from "./settings-render";
@@ -658,6 +659,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4 max-w-5xl">
+      <NavigationGuard isDirty={dirtyKeys.size > 0} message={`You have ${dirtyKeys.size} unsaved setting${dirtyKeys.size !== 1 ? "s" : ""}. Save before leaving?`} />
       {/* Hidden file input for restore */}
       <input
         ref={fileInputRef}

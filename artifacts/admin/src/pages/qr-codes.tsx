@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
@@ -12,14 +12,55 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Switch } from "@/components/ui/switch";
+import { QRCodeSVG } from "qrcode.react";
 import {
-  QrCode as QrCodeIcon, Plus, CheckCircle2, XCircle, Loader2, Copy,
+  QrCode as QrCodeIcon, Plus, CheckCircle2, XCircle, Loader2, Copy, Download, ScanLine,
 } from "lucide-react";
 
 type QrCode = {
   id: string; code: string; type: string; label: string;
   isActive: boolean; createdBy: string | null; createdAt: string;
+  scanCount?: number;
 };
+
+function QrPreviewCard({ code }: { code: QrCode }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  function downloadPng() {
+    const svg = wrapperRef.current?.querySelector("svg");
+    if (!svg) return;
+    const data = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    canvas.width = 200;
+    canvas.height = 200;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, 200, 200);
+      const link = document.createElement("a");
+      link.download = `qr-${code.code}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    };
+    img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(data)));
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div ref={wrapperRef}>
+        <QRCodeSVG
+          value={code.code}
+          size={100}
+          className="rounded-lg"
+        />
+      </div>
+      <Button variant="outline" size="sm" className="gap-1 text-xs h-7" onClick={downloadPng}>
+        <Download className="w-3 h-3" /> PNG
+      </Button>
+    </div>
+  );
+}
 
 function useQrCodes() {
   return useQuery({
@@ -40,22 +81,23 @@ export default function QrCodesPage() {
   const codes: QrCode[] = data?.codes || [];
 
   const createMutation = useMutation({
-    mutationFn: (body: { label: string; type: string }) => fetcher("/qr-codes", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: (data: any) => {
+    mutationFn: (body: { label: string; type: string }) =>
+      fetcher("/qr-codes", { method: "POST", body: JSON.stringify(body) }) as Promise<{ qrCode?: { code?: string } }>,
+    onSuccess: (data: { qrCode?: { code?: string } }) => {
       qc.invalidateQueries({ queryKey: ["admin-qr-codes"] });
       toast({ title: "QR Code generated", description: `Code: ${data?.qrCode?.code || "created"}` });
       setShowCreate(false);
       setLabel("");
       setType("payment");
     },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, activate }: { id: string; activate: boolean }) =>
       fetcher(`/qr-codes/${id}/${activate ? "activate" : "deactivate"}`, { method: "PATCH", body: "{}" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-qr-codes"] }); toast({ title: "QR Code updated" }); },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const copyCode = (code: string) => {
@@ -124,9 +166,10 @@ export default function QrCodesPage() {
             </div>
           ) : codes.map(c => (
             <Card key={c.id} className="rounded-2xl border overflow-hidden">
-              <CardContent className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <QrPreviewCard code={c} />
+                  <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{c.label}</p>
                     <div className="flex items-center gap-1 mt-1">
                       <code className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{c.code}</code>
@@ -134,6 +177,12 @@ export default function QrCodesPage() {
                         <Copy className="w-3 h-3" aria-hidden="true" />
                       </Button>
                     </div>
+                    {c.scanCount !== undefined && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                        <ScanLine className="w-3 h-3" />
+                        <span>{c.scanCount} scan{c.scanCount !== 1 ? "s" : ""}</span>
+                      </div>
+                    )}
                   </div>
                   <Switch
                     checked={c.isActive}
@@ -164,9 +213,11 @@ export default function QrCodesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>QR Image</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Label</TableHead>
                     <TableHead>Type</TableHead>
+                    <TableHead>Scans</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -175,6 +226,9 @@ export default function QrCodesPage() {
                 <TableBody>
                   {codes.map(c => (
                     <TableRow key={c.id} className="hover:bg-muted/30">
+                      <TableCell className="w-24">
+                        <QrPreviewCard code={c} />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{c.code}</code>
@@ -186,6 +240,12 @@ export default function QrCodesPage() {
                       <TableCell><span className="text-sm font-medium">{c.label}</span></TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs capitalize">{c.type}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <ScanLine className="w-3.5 h-3.5" />
+                          <span>{c.scanCount ?? 0}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={c.isActive ? "text-green-600 border-green-200 bg-green-50" : "text-red-600 border-red-200 bg-red-50"}>

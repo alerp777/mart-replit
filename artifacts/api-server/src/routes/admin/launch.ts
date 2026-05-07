@@ -824,4 +824,101 @@ export async function ensureLaunchData(): Promise<void> {
   }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   POST /api/admin/launch/recommend
+   Calls Gemini AI with current platform settings + metrics and returns
+   a structured launch recommendation.
+───────────────────────────────────────────────────────────── */
+router.post("/recommend", async (req, res) => {
+  try {
+    const [settings, [vendorCnt], [orderCnt], [rideCnt]] = await Promise.all([
+      db.select().from(platformSettingsTable),
+      db.select({ c: count() }).from(vendorProfilesTable),
+      db.select({ c: count() }).from(ordersTable),
+      db.select({ c: count() }).from(productsTable),
+    ]);
+
+    const settingsMap: Record<string, string> = {};
+    for (const r of settings) settingsMap[r.key] = r.value;
+
+    const enabledFeatures = Object.entries(settingsMap)
+      .filter(([k, v]) => k.startsWith("feature_") && v === "on")
+      .map(([k]) => k.replace("feature_", ""));
+
+    const disabledFeatures = Object.entries(settingsMap)
+      .filter(([k, v]) => k.startsWith("feature_") && v === "off")
+      .map(([k]) => k.replace("feature_", ""));
+
+    const currentMode = settingsMap["platform_mode"] ?? "demo";
+
+    const prompt = `You are an expert at launching digital super-apps in South Asia (AJK region of Pakistan).
+The AJKMart platform is a multi-service super-app (e-commerce, food delivery, rides, pharmacy, parcel) designed for low-resource environments.
+
+Current platform state:
+- Mode: ${currentMode}
+- Active vendors: ${vendorCnt?.c ?? 0}
+- Total orders: ${orderCnt?.c ?? 0}
+- Total products: ${rideCnt?.c ?? 0}
+- Enabled features: ${enabledFeatures.join(", ") || "none"}
+- Disabled features: ${disabledFeatures.join(", ") || "none"}
+- Payment methods: COD=${settingsMap["cod_enabled"] ?? "off"}, JazzCash=${settingsMap["jazzcash_enabled"] ?? "off"}, EasyPaisa=${settingsMap["easypaisa_enabled"] ?? "off"}
+- SMS/OTP: ${settingsMap["integration_sms"] ?? "off"}
+- Maps: ${settingsMap["integration_maps"] ?? "off"}
+
+Respond ONLY with valid JSON in this exact structure (no markdown, no prose):
+{
+  "suggestedMode": "demo" or "live",
+  "recommendation": "2-3 sentence summary of what to do and why",
+  "features": ["list", "of", "feature_keys", "to", "enable"],
+  "warnings": ["list of concerns or empty array"]
+}`;
+
+    let ai: any;
+    try {
+      const geminiModule = await import("@workspace/integrations-gemini-ai");
+      ai = geminiModule.ai;
+    } catch {
+      /* Gemini not configured — return a static rule-based recommendation */
+      const staticRec = {
+        suggestedMode: (vendorCnt?.c ?? 0) >= 3 && (orderCnt?.c ?? 0) >= 10 ? "live" : "demo",
+        recommendation: (vendorCnt?.c ?? 0) >= 3
+          ? "You have enough vendors and order history to go live. Enable payments and SMS before switching."
+          : "Add at least 3 vendors and run test orders before going live.",
+        features: enabledFeatures.length < 4 ? ["mart", "rides", "wallet", "pharmacy"] : [],
+        warnings: settingsMap["integration_sms"] !== "on" ? ["SMS/OTP is not enabled — users won't receive verification codes"] : [],
+      };
+      sendSuccess(res, staticRec);
+      return;
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { responseMimeType: "application/json" },
+    });
+
+    const text = response?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    let parsed: { suggestedMode: string; recommendation: string; features: string[]; warnings: string[] };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = {
+        suggestedMode: currentMode,
+        recommendation: text || "Could not parse AI recommendation.",
+        features: [],
+        warnings: [],
+      };
+    }
+
+    sendSuccess(res, {
+      suggestedMode: parsed.suggestedMode ?? currentMode,
+      recommendation: parsed.recommendation ?? "",
+      features: Array.isArray(parsed.features) ? parsed.features : [],
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+    });
+  } catch (err: any) {
+    sendError(res, err?.message ?? "Failed to generate recommendation", 502);
+  }
+});
+
 export default router;

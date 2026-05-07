@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { PageHeader } from "@/components/shared";
-import { MessageCircle, RefreshCw, Filter, CheckCheck, Check, Eye, XCircle, AlertTriangle } from "lucide-react";
+import { MessageCircle, RefreshCw, Filter, CheckCheck, Check, Eye, XCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useWhatsAppDeliveryLog } from "@/hooks/use-admin";
+import { useQuery } from "@tanstack/react-query";
+import { apiAbsoluteFetch } from "@/lib/api";
+
+const LIMIT = 50;
 
 function fd(d: string | Date) {
   return new Date(d).toLocaleString("en-PK", {
@@ -30,17 +33,38 @@ export default function WhatsAppDeliveryLog() {
   const [statusFilter, setStatusFilter] = useState("");
   const [phoneFilter,  setPhoneFilter]  = useState("");
   const [phoneInput,   setPhoneInput]   = useState("");
+  const [page, setPage] = useState(1);
+  const [allLogs, setAllLogs] = useState<any[]>([]);
 
-  const { data, isLoading, refetch } = useWhatsAppDeliveryLog({
-    status: statusFilter || undefined,
-    phone:  phoneFilter  || undefined,
+  const qs = new URLSearchParams();
+  if (statusFilter) qs.set("status", statusFilter);
+  if (phoneFilter)  qs.set("phone",  phoneFilter);
+  qs.set("limit",  String(LIMIT));
+  qs.set("offset", String((page - 1) * LIMIT));
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["admin-wa-delivery-log", statusFilter, phoneFilter, page],
+    queryFn: async () => {
+      const result = await apiAbsoluteFetch(`/api/webhooks/whatsapp/delivery-log?${qs.toString()}`);
+      return result;
+    },
+    refetchInterval: 30_000,
   });
 
   const logs: any[] = data?.logs ?? [];
   const total: number = data?.total ?? 0;
+  const hasMore = page * LIMIT < total;
 
-  const handlePhoneSearch = () => setPhoneFilter(phoneInput.trim());
-  const handlePhoneClear  = () => { setPhoneFilter(""); setPhoneInput(""); };
+  const displayedLogs = page === 1 ? logs : [...allLogs, ...logs];
+
+  const handlePhoneSearch = () => { setPhoneFilter(phoneInput.trim()); setPage(1); setAllLogs([]); };
+  const handlePhoneClear  = () => { setPhoneFilter(""); setPhoneInput(""); setPage(1); setAllLogs([]); };
+  const handleStatusChange = (s: string) => { setStatusFilter(s); setPage(1); setAllLogs([]); };
+
+  const loadMore = useCallback(() => {
+    setAllLogs(prev => [...prev, ...logs]);
+    setPage(p => p + 1);
+  }, [logs]);
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
@@ -51,7 +75,7 @@ export default function WhatsAppDeliveryLog() {
         iconBgClass="bg-green-100"
         iconColorClass="text-green-600"
         actions={
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
+          <Button variant="outline" size="sm" onClick={() => { refetch(); setPage(1); setAllLogs([]); }} className="self-start sm:self-auto">
             <RefreshCw className="w-4 h-4 mr-2" /> Refresh
           </Button>
         }
@@ -63,7 +87,7 @@ export default function WhatsAppDeliveryLog() {
           <Filter className="w-4 h-4 text-gray-400 flex-shrink-0"/>
           <span className="text-sm text-gray-500 font-medium">Status:</span>
           {STATUS_FILTERS.map(s => (
-            <button key={s || "all"} onClick={() => setStatusFilter(s)}
+            <button key={s || "all"} onClick={() => handleStatusChange(s)}
               className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-colors ${
                 statusFilter === s
                   ? "bg-primary text-white border-primary"
@@ -91,11 +115,11 @@ export default function WhatsAppDeliveryLog() {
 
       <p className="text-xs text-gray-400">{total} record{total !== 1 ? "s" : ""} found</p>
 
-      {isLoading ? (
+      {isLoading && page === 1 ? (
         <div className="space-y-3">{[1,2,3,4].map(i => (
           <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse"/>
         ))}</div>
-      ) : logs.length === 0 ? (
+      ) : displayedLogs.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-12 text-center">
             <p className="text-4xl mb-3">💬</p>
@@ -106,52 +130,69 @@ export default function WhatsAppDeliveryLog() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <p className="text-sm font-bold text-gray-700">Delivery Records</p>
-            <span className="text-xs text-gray-400">{logs.length} shown</span>
-          </div>
-          <div className="divide-y divide-gray-50 max-h-[600px] overflow-y-auto">
-            {logs.map((log: any) => {
-              const sc = statusConfig(log.status);
-              const Icon = sc.icon;
-              return (
-                <div key={log.id} className="px-4 py-3.5 flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${sc.cls}`}>
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-bold text-gray-800 font-mono">{log.recipient_phone}</p>
-                      <Badge variant="outline" className={`text-[10px] font-bold border ${sc.cls}`}>
-                        {sc.label}
-                      </Badge>
-                      {log.fallback_sent && (
-                        <Badge variant="outline" className="text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-200">
-                          Fallback: {log.fallback_channel ?? "sent"}
-                        </Badge>
-                      )}
+        <>
+          <Card className="border-0 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+              <p className="text-sm font-bold text-gray-700">Delivery Records</p>
+              <span className="text-xs text-gray-400">{displayedLogs.length} of {total} shown</span>
+            </div>
+            <div className="divide-y divide-gray-50 max-h-[600px] overflow-y-auto">
+              {displayedLogs.map((log: any, idx: number) => {
+                const sc = statusConfig(log.status);
+                const Icon = sc.icon;
+                return (
+                  <div key={log.id ?? idx} className="px-4 py-3.5 flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${sc.cls}`}>
+                      <Icon className="w-5 h-5" />
                     </div>
-                    {log.wa_message_id && (
-                      <p className="text-[11px] text-gray-400 font-mono mt-0.5 truncate">{log.wa_message_id}</p>
-                    )}
-                    {log.error_message && (
-                      <p className="text-xs text-red-500 mt-0.5 leading-snug">
-                        Error {log.error_code ? `(${log.error_code})` : ""}: {log.error_message}
-                      </p>
-                    )}
-                    {log.context_type && (
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        Context: {log.context_type}{log.context_id ? ` · ${log.context_id}` : ""}
-                      </p>
-                    )}
-                    <p className="text-[10px] text-gray-400 mt-1">{fd(log.sent_at)}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-bold text-gray-800 font-mono">{log.recipient_phone}</p>
+                        <Badge variant="outline" className={`text-[10px] font-bold border ${sc.cls}`}>
+                          {sc.label}
+                        </Badge>
+                        {log.fallback_sent && (
+                          <Badge variant="outline" className="text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-200">
+                            Fallback: {log.fallback_channel ?? "sent"}
+                          </Badge>
+                        )}
+                      </div>
+                      {log.wa_message_id && (
+                        <p className="text-[11px] text-gray-400 font-mono mt-0.5 truncate">{log.wa_message_id}</p>
+                      )}
+                      {log.error_message && (
+                        <p className="text-xs text-red-500 mt-0.5 leading-snug">
+                          Error {log.error_code ? `(${log.error_code})` : ""}: {log.error_message}
+                        </p>
+                      )}
+                      {log.context_type && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          Context: {log.context_type}{log.context_id ? ` · ${log.context_id}` : ""}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-1">{fd(log.sent_at)}</p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
+                );
+              })}
+            </div>
+          </Card>
+
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                className="rounded-xl gap-2"
+                onClick={loadMore}
+                disabled={isLoading}
+              >
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Load More
+                <span className="text-xs text-muted-foreground">({total - displayedLogs.length} remaining)</span>
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

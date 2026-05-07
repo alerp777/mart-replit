@@ -194,6 +194,9 @@ importers:
       mapbox-gl:
         specifier: ^3.20.0
         version: 3.20.0
+      qrcode.react:
+        specifier: ^4.2.0
+        version: 4.2.0(react@19.1.0)
       react-map-gl:
         specifier: ^8.1.0
         version: 8.1.0(mapbox-gl@3.20.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -440,7 +443,7 @@ importers:
         version: 7.3.1(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4)
       vitest:
         specifier: ^4.0.18
-        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jiti@2.6.1)(jsdom@29.0.2(@noble/hashes@1.8.0))(lightningcss@1.31.1)(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4)
+        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(vite@7.3.1(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))
       wouter:
         specifier: ^3.3.5
         version: 3.9.0(react@19.1.0)
@@ -856,7 +859,7 @@ importers:
         version: 4.21.0
       vitest:
         specifier: ^4.1.5
-        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jiti@2.6.1)(jsdom@29.0.2(@noble/hashes@1.8.0))(lightningcss@1.31.1)(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4)
+        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(vite@7.3.1(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))
 
   artifacts/mockup-sandbox:
     devDependencies:
@@ -1283,7 +1286,7 @@ importers:
         version: 7.3.1(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jiti@2.6.1)(jsdom@29.0.2(@noble/hashes@1.8.0))(lightningcss@1.31.1)(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4)
+        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(vite@7.3.1(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))
       wouter:
         specifier: ^3.3.5
         version: 3.9.0(react@19.1.0)
@@ -8964,6 +8967,11 @@ packages:
     resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
     hasBin: true
 
+  qrcode.react@4.2.0:
+    resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   qrcode@1.5.4:
     resolution: {integrity: sha512-1ca71Zgiu6ORjHqFBDpnSMTR2ReToX4l1Au1VFLyVeBTFavzQnv5JxMFr3ukHVKpSrSA2MCk0lNJSykjUfz7Zg==}
     engines: {node: '>=10.13.0'}
@@ -10440,6 +10448,7 @@ packages:
       '@vitest/ui': 4.1.5
       happy-dom: '*'
       jsdom: '*'
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -20023,6 +20032,10 @@ snapshots:
 
   qrcode-terminal@0.12.0: {}
 
+  qrcode.react@4.2.0(react@19.1.0):
+    dependencies:
+      react: 19.1.0
+
   qrcode@1.5.4:
     dependencies:
       dijkstrajs: 1.0.3
@@ -21741,7 +21754,7 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.4
 
-  vitest@4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jiti@2.6.1)(jsdom@29.0.2(@noble/hashes@1.8.0))(lightningcss@1.31.1)(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4):
+  vitest@4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.3.5)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(vite@7.3.1(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4)):
     dependencies:
       '@vitest/expect': 4.1.5
       '@vitest/mocker': 4.1.5(msw@2.13.6(@types/node@25.3.5)(typescript@5.9.3))(vite@7.3.1(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))
@@ -21768,17 +21781,7 @@ snapshots:
       '@types/node': 25.3.5
       jsdom: 29.0.2(@noble/hashes@1.8.0)
     transitivePeerDependencies:
-      - jiti
-      - less
-      - lightningcss
       - msw
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - terser
-      - tsx
-      - yaml
 
   vlq@1.0.1: {}
 
