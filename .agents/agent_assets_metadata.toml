@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4ORQw7Nt_A0MZh3fLvf9E"
+uri = "file://screenshots/otp-control-full.jpg"
+type = "image"
+title = "OTP Control Center — Full Page Design"
