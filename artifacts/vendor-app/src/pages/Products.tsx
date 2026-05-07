@@ -9,7 +9,7 @@ import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ImageUploader } from "../components/ImageUploader";
 import { SafeImage } from "../components/ui/SafeImage";
-import { fc, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
+import { fc, fd, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart", videoUrl:"" };
 const EMPTY_ROW = { name:"", price:"", description:"", image:"", category:"", unit:"", stock:"", type:"mart" };
@@ -18,6 +18,52 @@ const TYPES = ["mart","food","pharmacy","parcel"];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><label className={LABEL}>{label}</label>{children}</div>;
+}
+
+function StockHistoryPanel({ productId }: { productId: string }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["vendor-stock-history", productId],
+    queryFn: () => api.getProductStockHistory(productId),
+    staleTime: 30_000,
+  });
+
+  const rows: Array<{
+    id: string;
+    delta: number;
+    reason: string | null;
+    stockAfter: number | null;
+    orderId: string | null;
+    createdAt: string;
+  }> = Array.isArray(data?.history) ? data.history : [];
+
+  return (
+    <div className="border-t border-purple-100 bg-purple-50/40 px-4 py-3">
+      <p className="text-[11px] font-bold text-purple-700 mb-2 uppercase tracking-wide">Stock History</p>
+      {isLoading && <p className="text-xs text-gray-400">Loading…</p>}
+      {isError  && <p className="text-xs text-red-500">Failed to load history.</p>}
+      {!isLoading && !isError && rows.length === 0 && (
+        <p className="text-xs text-gray-400">No stock changes recorded yet.</p>
+      )}
+      {rows.length > 0 && (
+        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+          {rows.map(r => (
+            <div key={r.id} className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className={`font-extrabold tabular-nums w-8 text-center rounded px-1 ${r.delta < 0 ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700"}`}>
+                  {r.delta > 0 ? `+${r.delta}` : r.delta}
+                </span>
+                <span className="text-gray-600 capitalize">{r.reason ?? "update"}</span>
+                {r.stockAfter != null && (
+                  <span className="text-gray-400">→ {r.stockAfter} left</span>
+                )}
+              </div>
+              <span className="text-gray-400 flex-shrink-0">{fd(r.createdAt)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Products() {
@@ -166,6 +212,7 @@ export default function Products() {
   const [showPaste, setShowPaste] = useState(false);
   const [bulkCat, setBulkCat]   = useState("");
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [stockHistoryOpen, setStockHistoryOpen] = useState<string | null>(null);
 
   const parsePaste = () => {
     const isTabSeparated = pasteText.includes("\t") && !pasteText.startsWith('"');
@@ -289,7 +336,12 @@ export default function Products() {
                 <input value={form.unit} onChange={e => f("unit",e.target.value)} placeholder="kg / pcs / ltr" className={INPUT}/>
               </Field>
               <Field label={T("stockQtyLabel")}>
-                <input type="number" inputMode="numeric" value={form.stock} onChange={e => f("stock",e.target.value)} placeholder="Blank = unlimited" className={INPUT}/>
+                <input type="number" inputMode="numeric" min="0" value={form.stock} onChange={e => {
+                  const v = e.target.value;
+                  /* Block negative stock at UI level */
+                  if (v !== "" && Number(v) < 0) return;
+                  f("stock", v);
+                }} placeholder="Blank = unlimited" className={INPUT}/>
               </Field>
             </div>
             <Field label={T("descriptionLabel")}>
@@ -685,7 +737,7 @@ export default function Products() {
                         {p.originalPrice && p.originalPrice > p.price && <p className="text-[10px] text-gray-400 line-through">{fc(p.originalPrice, currencySymbol)}</p>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-2.5">
+                    <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                       <button onClick={() => toggleMut.mutate({ id: p.id, inStock: !p.inStock })}
                         className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 ${p.inStock ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                         {p.inStock ? "✓ In Stock" : "✗ Out"}
@@ -695,9 +747,20 @@ export default function Products() {
                         if (!window.confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
                         deleteMut.mutate(p.id);
                       }} className="h-8 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">🗑️</button>
+                      {p.stock != null && (
+                        <button
+                          onClick={() => setStockHistoryOpen(stockHistoryOpen === p.id ? null : p.id)}
+                          className="h-8 px-3 bg-purple-50 text-purple-600 text-xs font-bold rounded-xl android-press min-h-0">
+                          {stockHistoryOpen === p.id ? "▲ History" : "📊 History"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
+                {/* ── Stock History Collapsible Panel ── */}
+                {stockHistoryOpen === p.id && (
+                  <StockHistoryPanel productId={p.id} />
+                )}
               </div>
             ))}
           </div>

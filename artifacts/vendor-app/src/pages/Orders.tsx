@@ -8,6 +8,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { useOfflineQueue } from "../hooks/useOfflineQueue";
 import { fc, fd, CARD, DEFAULT_COMMISSION_PCT, errMsg } from "../lib/ui";
 import { io, type Socket } from "socket.io-client";
 
@@ -70,6 +71,8 @@ export default function Orders() {
     parcel: config.deliveryFee.parcel,
   };
   const now = useNow(10000);
+
+  const { isOnline, syncToast, enqueueStatusUpdate } = useOfflineQueue();
 
   const [tab, setTab]           = useState("new");
   const [expanded, setExpanded] = useState<string|null>(null);
@@ -257,10 +260,19 @@ export default function Orders() {
 
   const updateMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => {
+      /* If offline, enqueue and show feedback without hitting network */
+      if (enqueueStatusUpdate(id, status)) {
+        return Promise.resolve(null);
+      }
       setPendingOrderIds(s => new Set(s).add(id));
       return api.updateOrder(id, status);
     },
-    onSuccess: (_, { id, status }) => {
+    onSuccess: (result, { id, status }) => {
+      if (result === null) {
+        /* Queued offline — clear pending state and notify user */
+        showToast(`📴 Saved offline — will sync when reconnected`);
+        return;
+      }
       setPendingOrderIds(s => { const n = new Set(s); n.delete(id); return n; });
       qc.invalidateQueries({ queryKey: ["vendor-orders"] });
       qc.invalidateQueries({ queryKey: ["vendor-stats"] });
@@ -298,6 +310,17 @@ export default function Orders() {
       </div>
     )}>
     <PullToRefresh onRefresh={handlePullRefresh} className="min-h-screen bg-gray-50 md:bg-transparent">
+      {/* ── Offline Banner ── */}
+      {!isOnline && (
+        <div className="bg-red-500 text-white text-center text-xs font-bold py-2 px-4">
+          📴 You're offline — order updates will be queued and sent when reconnected
+        </div>
+      )}
+      {syncToast && (
+        <div className="fixed top-4 left-4 right-4 z-[9999] bg-gray-900 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl text-center">
+          {syncToast}
+        </div>
+      )}
       <PageHeader title={T("orders")} subtitle={`${orders.length} ${subtitleTab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
 
       {/* ── Tabs ── */}
@@ -353,6 +376,9 @@ export default function Orders() {
               const timerRed       = minsLeft <= 2 && isPendingTimer;
               const isOrderPending = pendingOrderIds.has(o.id);
               const orderDeliveryFee = o.deliveryFee != null ? o.deliveryFee : (dlvFeeMap[o.type] ?? dlvFeeMap.mart);
+              /* Cancel window: vendor can only cancel within 5 minutes */
+              const msSincePlacedForCancel = o.createdAt ? Date.now() - new Date(o.createdAt).getTime() : 0;
+              const cancelWindowExpired = msSincePlacedForCancel > 5 * 60 * 1000;
 
               return (
                 <div key={o.id} className={`${CARD}${o.status === "pending" ? " border-l-4 border-orange-400" : ""}`}>
@@ -484,8 +510,13 @@ export default function Orders() {
                             {T(next.labelKey)}
                           </button>
                           {o.status === "pending" && (
-                            <button onClick={() => setRejectDialog({ id: o.id })} disabled={isOrderPending}
-                              className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press disabled:opacity-60">✕ {T("rejectOrder")}</button>
+                            <button
+                              onClick={() => setRejectDialog({ id: o.id })}
+                              disabled={isOrderPending || cancelWindowExpired}
+                              title={cancelWindowExpired ? "Cancellation window (5 min) has passed" : undefined}
+                              className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press disabled:opacity-40 disabled:cursor-not-allowed">
+                              {cancelWindowExpired ? "🔒 Window Closed" : `✕ ${T("rejectOrder")}`}
+                            </button>
                           )}
                         </div>
                       )}

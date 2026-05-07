@@ -9,6 +9,7 @@ import { tDual } from "@workspace/i18n";
 import { useState, useRef, useCallback } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
+import { useOfflineQueue } from "../hooks/useOfflineQueue";
 import { fc, CARD, STAT_VAL, STAT_LBL, DEFAULT_COMMISSION_PCT, errMsg } from "../lib/ui";
 import { Truck } from "lucide-react";
 
@@ -170,6 +171,7 @@ export default function Dashboard() {
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const qc = useQueryClient();
+  const { isOnline } = useOfflineQueue();
   const [toast, setToast] = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
   const [pendingOrderIds, setPendingOrderIds] = useState<Set<string>>(new Set());
@@ -243,6 +245,12 @@ export default function Dashboard() {
 
   return (
     <PullToRefresh onRefresh={handleRefresh} className="min-h-screen bg-gray-50 md:bg-transparent">
+      {/* ── Offline Banner ── */}
+      {!isOnline && (
+        <div className="bg-red-500 text-white text-center text-xs font-bold py-2 px-4">
+          📴 You're offline — data may be out of date
+        </div>
+      )}
       {/* ── Header ── */}
       <PageHeader
         title={user?.storeName || "Dashboard"}

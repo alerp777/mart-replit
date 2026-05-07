@@ -86,3 +86,5 @@ export * from "./search_logs";
 export * from "./file_scan_results";
 export * from "./admin_action_audit_log";
 export * from "./otp_attempts";
+export * from "./order_audit_log";
+export * from "./product_stock_history";

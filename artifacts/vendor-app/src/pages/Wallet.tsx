@@ -294,6 +294,26 @@ export default function Wallet() {
           </div>
         )}
 
+        {/* ── Daily Settlement Summary ── */}
+        {data?.dailySettlement && (
+          <div className="bg-green-50 border border-green-100 rounded-2xl p-4">
+            <p className="text-sm font-bold text-green-800 mb-3">📊 Today's Settlement — {data.dailySettlement.date}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Gross Credits", value: fc(data.dailySettlement.grossCredits, currencySymbol), color: "text-green-700" },
+                { label: `Commission (${data.commissionPct ?? commissionPct}%)`, value: `−${fc(data.dailySettlement.commissionDeducted, currencySymbol)}`, color: "text-red-500" },
+                { label: "Net Payout", value: fc(data.dailySettlement.netPayout, currencySymbol), color: "text-green-800 font-extrabold" },
+                { label: "Transactions", value: String(data.dailySettlement.transactionCount), color: "text-gray-700" },
+              ].map(s => (
+                <div key={s.label} className="bg-white rounded-xl p-2.5">
+                  <p className="text-[10px] text-gray-400 font-medium">{s.label}</p>
+                  <p className={`text-sm font-bold mt-0.5 ${s.color}`}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Settlement Info ── */}
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex gap-3">
           <span className="text-2xl flex-shrink-0">📅</span>
@@ -341,20 +361,39 @@ export default function Wallet() {
           ) : (
             <div className="divide-y divide-gray-50">
               {transactions.map((t: any) => (
-                <div key={t.id} className="px-4 py-3.5 flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-lg ${t.type === "credit" || t.type === "bonus" ? "bg-green-50" : "bg-red-50"}`}>
-                    {t.type === "credit" ? "💰" : t.type === "bonus" ? "🎁" : "💸"}
+                <div key={t.id} className="px-4 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-lg ${t.type === "credit" || t.type === "bonus" ? "bg-green-50" : "bg-red-50"}`}>
+                      {t.type === "credit" ? "💰" : t.type === "bonus" ? "🎁" : "💸"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{t.description}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{fd(t.createdAt)}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className={`text-base font-extrabold ${t.type === "credit" || t.type === "bonus" ? "text-green-600" : "text-red-500"}`}>
+                        {t.type === "debit" ? "-" : "+"}{fc(Number(t.amount), currencySymbol)}
+                      </p>
+                      <div className="mt-0.5">{txBadge(t.type)}</div>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{t.description}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{fd(t.createdAt)}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className={`text-base font-extrabold ${t.type === "credit" || t.type === "bonus" ? "text-green-600" : "text-red-500"}`}>
-                      {t.type === "debit" ? "-" : "+"}{fc(Number(t.amount), currencySymbol)}
-                    </p>
-                    <div className="mt-0.5">{txBadge(t.type)}</div>
-                  </div>
+                  {/* Fee breakdown for order credit transactions */}
+                  {t.commissionDeducted > 0 && (
+                    <div className="ml-13 mt-1.5 pl-12 space-y-0.5">
+                      <div className="flex justify-between text-[10px] text-gray-400">
+                        <span>Gross order value</span>
+                        <span>{fc(t.grossAmount ?? (t.amount + t.commissionDeducted), currencySymbol)}</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] text-red-400">
+                        <span>Platform fee ({data?.commissionPct ?? commissionPct}%)</span>
+                        <span>−{fc(t.commissionDeducted, currencySymbol)}</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] text-green-600 font-semibold">
+                        <span>Your share</span>
+                        <span>{fc(t.netPayout, currencySymbol)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

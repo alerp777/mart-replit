@@ -2,8 +2,8 @@ import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable, deliveryWhitelistTable, deliveryAccessRequestsTable, riderProfilesTable, vendorProfilesTable, vendorSchedulesTable, stockSubscriptionsTable } from "@workspace/db/schema";
-import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg } from "drizzle-orm";
+import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable, deliveryWhitelistTable, deliveryAccessRequestsTable, riderProfilesTable, vendorProfilesTable, vendorSchedulesTable, stockSubscriptionsTable, orderAuditLogTable, productStockHistoryTable } from "@workspace/db/schema";
+import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg, lte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { requireRole } from "../middleware/security.js";
@@ -191,11 +191,27 @@ router.get("/orders", async (req, res) => {
 /* ── PATCH /vendor/orders/:id/status ── */
 router.patch("/orders/:id/status", async (req, res) => {
   const vendorId = req.vendorId!;
-  const { status } = req.body;
+  /* Strict: only status and note accepted — reject price/total etc. explicitly */
+  const allowedKeys = new Set(["status", "note"]);
+  const extraKeys = Object.keys(req.body).filter(k => !allowedKeys.has(k));
+  if (extraKeys.length > 0) {
+    sendValidationError(res, `Unexpected fields: ${extraKeys.join(", ")}. Only "status" and "note" are accepted.`);
+    return;
+  }
+  const { status, note } = req.body as { status?: string; note?: string };
   const validStatuses = ["confirmed","preparing","ready","cancelled"];
-  if (!validStatuses.includes(status)) { sendValidationError(res, "Invalid status"); return; }
+  if (!status || !validStatuses.includes(status)) { sendValidationError(res, "Invalid status"); return; }
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.vendorId, vendorId))).limit(1);
   if (!order) { sendNotFound(res, "Order not found"); return; }
+
+  /* ── Cancellation time window: vendor can only cancel within 5 minutes ── */
+  if (status === "cancelled") {
+    const msSincePlaced = Date.now() - new Date(order.createdAt).getTime();
+    if (msSincePlaced > 5 * 60 * 1000) {
+      sendForbidden(res, "Cancellation window has passed. Orders can only be cancelled within 5 minutes of being placed.");
+      return;
+    }
+  }
 
   const ALLOWED_TRANSITIONS: Record<string, string[]> = {
     pending:   ["confirmed", "cancelled"],
@@ -223,7 +239,70 @@ router.patch("/orders/:id/status", async (req, res) => {
 
   let updated: typeof order;
 
-  if (status === "cancelled" && order.paymentMethod === "wallet") {
+  if (status === "confirmed") {
+    /* ── Oversell prevention: check stock and atomically decrement in a transaction ── */
+    const items = Array.isArray(order.items) ? (order.items as Array<{ productId?: string; quantity?: number }>) : [];
+    const itemsWithProducts = items.filter(it => it.productId);
+    if (itemsWithProducts.length > 0) {
+      try {
+        await db.transaction(async (tx) => {
+          for (const item of itemsWithProducts) {
+            const qty = Number(item.quantity) || 1;
+            const [prod] = await tx.select({ id: productsTable.id, stock: productsTable.stock, name: productsTable.name })
+              .from(productsTable)
+              .where(and(eq(productsTable.id, item.productId!), eq(productsTable.vendorId, vendorId)))
+              .limit(1);
+            if (!prod) continue;
+            if (prod.stock !== null && prod.stock < qty) {
+              throw Object.assign(new Error(`Insufficient stock for "${prod.name}". Available: ${prod.stock}, Required: ${qty}`), { code: "INSUFFICIENT_STOCK" });
+            }
+            if (prod.stock !== null) {
+              /* Use RETURNING to verify the UPDATE actually matched (concurrent-safe) */
+              const decremented = await tx.update(productsTable)
+                .set({ stock: sql`stock - ${qty}`, updatedAt: new Date() })
+                .where(and(eq(productsTable.id, prod.id), gte(productsTable.stock, qty)))
+                .returning({ id: productsTable.id, newStock: productsTable.stock });
+              if (decremented.length === 0) {
+                /* Another concurrent confirm already took the last units */
+                throw Object.assign(
+                  new Error(`Insufficient stock for "${prod.name}". Stock was taken by a concurrent order.`),
+                  { code: "INSUFFICIENT_STOCK" },
+                );
+              }
+              /* Record stock history inside the same transaction */
+              await tx.insert(productStockHistoryTable).values({
+                id: generateId(), productId: prod.id, vendorId,
+                previousStock: prod.stock,
+                newStock: decremented[0]!.newStock,
+                source: "order",
+              }).catch(() => {});
+            }
+          }
+          const [result] = await tx.update(ordersTable)
+            .set({ status, updatedAt: new Date() })
+            .where(and(eq(ordersTable.id, orderId), eq(ordersTable.vendorId, vendorId)))
+            .returning();
+          if (!result) throw new Error("Order not found");
+          updated = result;
+        });
+      } catch (e: unknown) {
+        const err = e as Error & { code?: string };
+        if (err.code === "INSUFFICIENT_STOCK") {
+          sendError(res, err.message, 409);
+        } else {
+          sendNotFound(res, err.message || "Failed to confirm order");
+        }
+        return;
+      }
+    } else {
+      const [result] = await db.update(ordersTable)
+        .set({ status, updatedAt: new Date() })
+        .where(and(eq(ordersTable.id, orderId), eq(ordersTable.vendorId, vendorId)))
+        .returning();
+      if (!result) { sendNotFound(res, "Order not found"); return; }
+      updated = result;
+    }
+  } else if (status === "cancelled" && order.paymentMethod === "wallet") {
     /* Atomic: status update + wallet credit + refund stamp in one tx.
        WHERE refunded_at IS NULL guard prevents double-credit under concurrent requests. */
     const refundAmt = safeNum(order.total);
@@ -249,7 +328,7 @@ router.patch("/orders/:id/status", async (req, res) => {
     });
     if (!txResult) { sendError(res, "Order has already been refunded", 409); return; }
     updated = txResult;
-    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: t("notifRefundProcessed", custLang) + " 💰", body: t("notifRefundProcessedBody", custLang).replace("{amount}", refundAmt.toFixed(0)), type: "wallet", icon: "wallet-outline" }).catch((e: Error) => logger.warn({ orderId, userId: order.userId, err: e.message }, "[vendor/order-status] refund notification insert failed"));
+    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: t("notifRefundProcessed", custLang) + " 💰", body: t("notifRefundProcessedBody", custLang).replace("{amount}", safeNum(order.total).toFixed(0)), type: "wallet", icon: "wallet-outline" }).catch((e: Error) => logger.warn({ orderId, userId: order.userId, err: e.message }, "[vendor/order-status] refund notification insert failed"));
   } else {
     /* Non-wallet or non-cancel: plain status update — vendorId in WHERE closes TOCTOU window */
     const [result] = await db.update(ordersTable)
@@ -260,9 +339,33 @@ router.patch("/orders/:id/status", async (req, res) => {
     updated = result;
   }
 
+  /* ── Audit trail: record every status transition ── */
+  await db.insert(orderAuditLogTable).values({
+    id: generateId(), orderId, vendorId,
+    fromStatus: order.status, toStatus: status,
+    note: note || null,
+  }).catch((e: Error) => logger.warn({ orderId, vendorId, err: e.message }, "[vendor/order-status] audit log insert failed"));
+
   if (msgs[status]) {
     await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: msgs[status]!.title, body: msgs[status]!.body, type: "order", icon: "bag-outline" }).catch((e: Error) => logger.warn({ orderId, userId: order.userId, status, err: e.message }, "[vendor/order-status] status notification insert failed"));
   }
+
+  /* ── Push notification to customer ── */
+  (async () => {
+    try {
+      const { sendPushToUsers } = await import("../lib/webpush.js");
+      if (msgs[status]) {
+        await sendPushToUsers([order.userId], {
+          title: msgs[status]!.title,
+          body: msgs[status]!.body,
+          tag: `order-${orderId}-${status}`,
+          data: { orderId, type: status === "cancelled" ? "order_cancelled" : "order_status", status },
+        });
+      }
+    } catch (e) {
+      logger.warn({ orderId, err: (e as Error).message }, "[vendor/order-status] push notification failed");
+    }
+  })();
 
   const io = getIO();
   if (io) {
@@ -315,6 +418,12 @@ router.post("/products", async (req, res) => {
   if (!isFinite(Number(body.price)) || Number(body.price) <= 0) {
     sendValidationError(res, "Price must be a positive number"); return;
   }
+  if (body.stock !== undefined && body.stock !== null && body.stock !== "") {
+    const stockVal = Number(body.stock);
+    if (!isFinite(stockVal) || stockVal < 0) {
+      sendValidationError(res, "Stock cannot be negative"); return;
+    }
+  }
 
   const s = await getPlatformSettings();
   const maxItems = parseInt(s["vendor_max_items"] ?? "100");
@@ -353,6 +462,8 @@ router.post("/products/bulk", async (req, res) => {
   }
   const invalid = products.filter(p => !p.name || !p.price || !isFinite(Number(p.price)) || Number(p.price) <= 0);
   if (invalid.length > 0) { sendValidationError(res, `${invalid.length} product(s) missing name, or have an invalid/non-positive price`); return; }
+  const negativeStock = products.filter(p => p.stock !== undefined && p.stock !== null && p.stock !== "" && Number(p.stock) < 0);
+  if (negativeStock.length > 0) { sendValidationError(res, `${negativeStock.length} product(s) have negative stock values. Stock must be 0 or greater.`); return; }
   const inserted = await db.insert(productsTable).values(
     products.map(p => ({
       id: generateId(), vendorId, vendorName: user.storeName || user.name,
@@ -364,6 +475,20 @@ router.post("/products/bulk", async (req, res) => {
       approvalStatus: "pending",
     }))
   ).returning();
+
+  /* ── Bulk stock history: record initial stock for products with stock values ── */
+  const withStock = inserted.filter(p => p.stock !== null);
+  if (withStock.length > 0) {
+    await db.insert(productStockHistoryTable).values(
+      withStock.map(p => ({
+        id: generateId(), productId: p.id, vendorId,
+        previousStock: null,
+        newStock: p.stock,
+        source: "bulk_add",
+      }))
+    ).catch((e: Error) => logger.warn({ err: e.message }, "[vendor/products/bulk] stock history insert failed"));
+  }
+
   sendCreated(res, { inserted: inserted.length, products: inserted.map(p => ({ ...p, price: safeNum(p.price) })) });
 });
 
@@ -372,7 +497,7 @@ router.patch("/products/:id", async (req, res) => {
   const vendorId = req.vendorId!;
   const body = req.body;
 
-  /* Snapshot previous inStock state for back-in-stock detection */
+  /* Snapshot previous state for back-in-stock detection and stock history */
   const [prevProduct] = await db.select({ inStock: productsTable.inStock, stock: productsTable.stock, name: productsTable.name })
     .from(productsTable)
     .where(and(eq(productsTable.id, req.params["id"]!), eq(productsTable.vendorId, vendorId)))
@@ -390,11 +515,28 @@ router.patch("/products/:id", async (req, res) => {
   }
   if (body.originalPrice !== undefined) updates.originalPrice = body.originalPrice ? String(body.originalPrice) : null;
   if (body.inStock     !== undefined) updates.inStock      = body.inStock;
-  if (body.stock       !== undefined) updates.stock        = body.stock !== null ? Number(body.stock) : null;
+  if (body.stock       !== undefined) {
+    const newStockVal = body.stock !== null ? Number(body.stock) : null;
+    /* Block negative stock at backend validation layer */
+    if (newStockVal !== null && newStockVal < 0) {
+      sendValidationError(res, "Stock cannot be negative"); return;
+    }
+    updates.stock = newStockVal;
+  }
   if (body.image       !== undefined) updates.image        = body.image;
   if (body.videoUrl    !== undefined) updates.videoUrl     = body.videoUrl || null;
   const [product] = await db.update(productsTable).set(updates).where(and(eq(productsTable.id, req.params["id"]!), eq(productsTable.vendorId, vendorId))).returning();
   if (!product) { sendNotFound(res, "Product not found"); return; }
+
+  /* ── Stock history: record changes to stock field ── */
+  if (body.stock !== undefined && body.stock !== null && prevProduct.stock !== product.stock) {
+    await db.insert(productStockHistoryTable).values({
+      id: generateId(), productId: product.id, vendorId,
+      previousStock: prevProduct.stock,
+      newStock: product.stock,
+      source: "manual",
+    }).catch((e: Error) => logger.warn({ productId: product.id, err: e.message }, "[vendor/products] stock history insert failed"));
+  }
 
   /* ── Back-in-stock: notify subscribers if product just became available ── */
   /* Trigger when: (a) inStock flipped to true, OR (b) stock transitioned from <=0 to >0 */
@@ -421,6 +563,30 @@ router.patch("/products/:id", async (req, res) => {
   }
 
   sendSuccess(res, { ...product, price: safeNum(product.price) });
+});
+
+/* ── GET /vendor/products/:id/stock-history ── */
+router.get("/products/:id/stock-history", async (req, res) => {
+  const vendorId = req.vendorId!;
+  const productId = req.params["id"]!;
+  /* Verify ownership */
+  const [prod] = await db.select({ id: productsTable.id }).from(productsTable)
+    .where(and(eq(productsTable.id, productId), eq(productsTable.vendorId, vendorId))).limit(1);
+  if (!prod) { sendNotFound(res, "Product not found"); return; }
+  const rows = await db.select().from(productStockHistoryTable)
+    .where(eq(productStockHistoryTable.productId, productId))
+    .orderBy(desc(productStockHistoryTable.changedAt))
+    .limit(50);
+  /* Transform to client-friendly shape: delta, reason, stockAfter */
+  const history = rows.map(r => ({
+    id: r.id,
+    delta: (r.newStock ?? 0) - (r.previousStock ?? 0),
+    reason: r.source,
+    stockAfter: r.newStock,
+    orderId: null,
+    createdAt: r.changedAt,
+  }));
+  sendSuccess(res, { history });
 });
 
 /* ── DELETE /vendor/products/:id ── */
@@ -491,12 +657,45 @@ router.get("/wallet/transactions", async (req, res) => {
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(limit);
   const user = req.vendorUser!;
+
+  /* ── Commission / platform-fee breakdown per transaction ── */
+  const s = await getPlatformSettings();
+  const commissionPct = parseFloat(s["vendor_commission_pct"] ?? "15");
+  const vendorKeepPct = 100 - commissionPct;
+
+  const enriched = txns.map(t => {
+    const amt = safeNum(t.amount);
+    /* Only credit transactions from orders carry commission info */
+    const isOrderCredit = t.type === "credit" && t.description && (t.description.includes("Order") || t.description.includes("order"));
+    if (isOrderCredit && amt > 0) {
+      const grossOrderValue = parseFloat((amt / (vendorKeepPct / 100)).toFixed(2));
+      const commissionDeducted = parseFloat((grossOrderValue * commissionPct / 100).toFixed(2));
+      return { ...t, amount: amt, commissionDeducted, platformFee: commissionDeducted, netPayout: amt, grossAmount: grossOrderValue };
+    }
+    return { ...t, amount: amt, commissionDeducted: 0, platformFee: 0, netPayout: amt };
+  });
+
+  /* ── Daily settlement summary ── */
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayTxns = txns.filter(t => new Date(t.createdAt) >= today);
+  const dailyCredits = todayTxns.filter(t => t.type === "credit" || t.type === "bonus").reduce((s, t) => s + safeNum(t.amount), 0);
+  const dailyDebits  = todayTxns.filter(t => t.type === "debit").reduce((s, t) => s + safeNum(t.amount), 0);
+  const dailyCommission = parseFloat((dailyCredits * commissionPct / 100).toFixed(2));
+  const dailyNetPayout  = parseFloat((dailyCredits - dailyCommission).toFixed(2));
+
   sendSuccess(res, {
     balance: safeNum(user.walletBalance),
-    transactions: txns.map(t => ({
-      ...t,
-      amount: safeNum(t.amount),
-    })),
+    transactions: enriched,
+    commissionPct,
+    vendorKeepPct,
+    dailySettlement: {
+      date: today.toISOString().slice(0, 10),
+      grossCredits: parseFloat(dailyCredits.toFixed(2)),
+      commissionDeducted: dailyCommission,
+      netPayout: dailyNetPayout,
+      debits: parseFloat(dailyDebits.toFixed(2)),
+      transactionCount: todayTxns.length,
+    },
   });
 });
 
@@ -727,6 +926,67 @@ router.get("/analytics", async (req, res) => {
     ? parseFloat(((returningCustomers / totalCustomers) * 100).toFixed(1))
     : 0;
 
+  /* ── customerRatings: avg rating + count for this vendor in range ── */
+  const [ratingsRow] = await db.select({ avgRating: avg(reviewsTable.rating), cnt: count() })
+    .from(reviewsTable)
+    .where(and(
+      eq(reviewsTable.vendorId, vendorId),
+      gte(reviewsTable.createdAt, fromDate),
+      sql`${reviewsTable.createdAt} <= ${toDate}`,
+    ));
+  const avgRatingVal = ratingsRow?.avgRating ? parseFloat(parseFloat(ratingsRow.avgRating).toFixed(1)) : null;
+  const ratingCount  = ratingsRow?.cnt ?? 0;
+
+  /* ── cancellationRate: % of orders cancelled in range ── */
+  const cancelledCount = byStatus["cancelled"] ?? 0;
+  const totalWithCancelled = Object.values(byStatus).reduce((a, b) => a + b, 0);
+  const cancellationRate = totalWithCancelled > 0
+    ? parseFloat(((cancelledCount / totalWithCancelled) * 100).toFixed(1))
+    : 0;
+
+  /* ── responseTime: median minutes from order placed to first vendor action (confirmed/cancelled) ── */
+  const auditRows = await db.select({
+    orderId: orderAuditLogTable.orderId,
+    toStatus: orderAuditLogTable.toStatus,
+    changedAt: orderAuditLogTable.changedAt,
+  }).from(orderAuditLogTable)
+    .where(and(
+      eq(orderAuditLogTable.vendorId, vendorId),
+      gte(orderAuditLogTable.changedAt, fromDate),
+      sql`${orderAuditLogTable.changedAt} <= ${toDate}`,
+      or(eq(orderAuditLogTable.toStatus, "confirmed"), eq(orderAuditLogTable.toStatus, "cancelled")),
+    ));
+
+  /* Merge with order createdAt data to compute response times.
+     Use EARLIEST qualifying audit event per order to avoid double-counting.
+     Group by orderId, pick the minimum changedAt, then compute per-order median. */
+  const orderCreatedMap = new Map(inRangeOrders.map(o => [o.id, o.createdAt as Date]));
+  /* Collect earliest action time per order */
+  const earliestActionMap = new Map<string, Date>();
+  for (const row of auditRows) {
+    const existing = earliestActionMap.get(row.orderId);
+    const rowTime = new Date(row.changedAt);
+    if (!existing || rowTime < existing) {
+      earliestActionMap.set(row.orderId, rowTime);
+    }
+  }
+  const responseTimes: number[] = [];
+  for (const [orderId, actionTime] of earliestActionMap) {
+    const created = orderCreatedMap.get(orderId);
+    if (created) {
+      const mins = (actionTime.getTime() - new Date(created).getTime()) / 60000;
+      if (mins >= 0 && mins < 1440) responseTimes.push(mins);
+    }
+  }
+  let medianResponseTime: number | null = null;
+  if (responseTimes.length > 0) {
+    const sorted = [...responseTimes].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    medianResponseTime = sorted.length % 2 !== 0
+      ? parseFloat(sorted[mid]!.toFixed(1))
+      : parseFloat(((sorted[mid - 1]! + sorted[mid]!) / 2).toFixed(1));
+  }
+
   sendSuccess(res, {
     summary: { totalOrders, totalRevenue },
     daily,
@@ -734,6 +994,9 @@ router.get("/analytics", async (req, res) => {
     byStatus,
     peakHours: hourBuckets,
     returnRate: { totalCustomers, returningCustomers, rate: returnRate },
+    customerRatings: { avgRating: avgRatingVal, count: ratingCount },
+    cancellationRate,
+    responseTime: medianResponseTime,
     period: {
       days,
       from: fromDate.toISOString().slice(0, 10),
