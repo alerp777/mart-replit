@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { productsTable, vendorProfilesTable, ordersTable, usersTable, ridesTable } from "@workspace/db/schema";
-import { count, eq, gte, sum } from "drizzle-orm";
+import { count, countDistinct, eq, gte, inArray, sum } from "drizzle-orm";
 import { sendSuccess, sendInternalError } from "../lib/response.js";
 
 const router: IRouter = Router();
@@ -19,12 +19,24 @@ router.get("/", async (_req, res) => {
       [activeVendorsResult],
       [ridesResult],
     ] = await Promise.all([
+      /* Total orders placed in the last 30 days */
       db.select({ c: count() }).from(ordersTable).where(gte(ordersTable.createdAt, thirtyDaysAgo)),
-      db.select({ total: sum(ordersTable.total) }).from(ordersTable).where(gte(ordersTable.createdAt, thirtyDaysAgo)),
-      db.select({ c: count() }).from(usersTable).where(eq(usersTable.role, "customer")),
-      db.select({ c: count() }).from(usersTable).where(eq(usersTable.role, "rider")),
+      /* Revenue from delivered/completed orders only */
+      db.select({ total: sum(ordersTable.total) }).from(ordersTable).where(
+        inArray(ordersTable.status, ["delivered", "completed"]),
+      ),
+      /* Distinct customers who placed at least one order in the last 30 days */
+      db.select({ c: countDistinct(ordersTable.userId) }).from(ordersTable).where(gte(ordersTable.createdAt, thirtyDaysAgo)),
+      /* Riders who completed at least one delivery in the last 30 days */
+      db.select({ c: countDistinct(ordersTable.riderId) }).from(ordersTable).where(
+        inArray(ordersTable.status, ["delivered", "completed"]),
+      ),
+      /* Vendors with their store currently open */
       db.select({ c: count() }).from(vendorProfilesTable).where(eq(vendorProfilesTable.storeIsOpen, true)),
-      db.select({ c: count() }).from(ridesTable).where(gte(ridesTable.createdAt, thirtyDaysAgo)),
+      /* Completed rides this month */
+      db.select({ c: count() }).from(ridesTable).where(
+        inArray(ridesTable.status, ["completed"]),
+      ),
     ]);
 
     sendSuccess(res, {

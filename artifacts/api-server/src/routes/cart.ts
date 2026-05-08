@@ -62,36 +62,40 @@ router.put("/snapshot", customerAuth, async (req, res) => {
 
     if (productIds.length > 0) {
       const products = await db
-        .select({ id: productsTable.id, inStock: productsTable.inStock })
+        .select({ id: productsTable.id, inStock: productsTable.inStock, stock: productsTable.stock })
         .from(productsTable)
         .where(inArray(productsTable.id, productIds));
 
       const productMap = new Map(products.map(p => [p.id, p]));
 
-      for (const productId of productIds) {
+      for (const [idx, item] of typedItems.entries()) {
+        const productId = item["productId"];
+        if (typeof productId !== "string" || !productId) continue;
         const product = productMap.get(productId);
         if (!product) {
-          validationErrors.push({ productId, error: "not_found" });
-        } else if (!product.inStock) {
-          validationErrors.push({ productId, error: "out_of_stock" });
+          validationErrors.push({ index: idx, productId, error: "not_found" });
+        } else if (!product.inStock || (product.stock !== null && product.stock <= 0)) {
+          validationErrors.push({ index: idx, productId, error: "out_of_stock" });
         }
       }
     }
 
     if (variantIds.length > 0) {
       const variants = await db
-        .select({ id: productVariantsTable.id, inStock: productVariantsTable.inStock })
+        .select({ id: productVariantsTable.id, inStock: productVariantsTable.inStock, stock: productVariantsTable.stock })
         .from(productVariantsTable)
         .where(inArray(productVariantsTable.id, variantIds));
 
       const variantMap = new Map(variants.map(v => [v.id, v]));
 
-      for (const variantId of variantIds) {
+      for (const [idx, item] of typedItems.entries()) {
+        const variantId = item["variantId"];
+        if (typeof variantId !== "string" || !variantId) continue;
         const variant = variantMap.get(variantId);
         if (!variant) {
-          validationErrors.push({ variantId, error: "not_found" });
-        } else if (!variant.inStock) {
-          validationErrors.push({ variantId, error: "out_of_stock" });
+          validationErrors.push({ index: idx, variantId, error: "not_found" });
+        } else if (!variant.inStock || (variant.stock !== null && variant.stock <= 0)) {
+          validationErrors.push({ index: idx, variantId, error: "out_of_stock" });
         }
       }
     }

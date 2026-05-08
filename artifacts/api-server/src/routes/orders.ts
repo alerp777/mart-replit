@@ -60,9 +60,9 @@ setInterval(async () => {
 }, 5 * 60_000);
 
 /* ── Auto-cancel stale pending orders ─────────────────────────────────────
-   Runs every 5 minutes. Cancels orders that have been pending longer than
+   Runs every 1 minute. Cancels orders that have been pending longer than
    the configured `order_auto_cancel_min` setting (default: 30 min).
-   Refunds wallet-paid orders automatically.                              ── */
+   Refunds wallet-paid orders automatically and restores reserved stock. ── */
 setInterval(async () => {
   try {
     const s = await getCachedSettings();
@@ -70,7 +70,14 @@ setInterval(async () => {
     if (autoCancelMin <= 0) return;
     const cutoff = new Date(Date.now() - autoCancelMin * 60_000);
 
-    const stale = await db.select({ id: ordersTable.id, userId: ordersTable.userId, total: ordersTable.total, paymentMethod: ordersTable.paymentMethod, vendorId: ordersTable.vendorId })
+    const stale = await db.select({
+      id: ordersTable.id,
+      userId: ordersTable.userId,
+      total: ordersTable.total,
+      paymentMethod: ordersTable.paymentMethod,
+      vendorId: ordersTable.vendorId,
+      items: ordersTable.items,
+    })
       .from(ordersTable)
       .where(and(
         eq(ordersTable.status, "pending"),
@@ -80,24 +87,60 @@ setInterval(async () => {
     for (const order of stale) {
       try {
         await db.transaction(async (tx) => {
+          const now = new Date();
           const [cancelled] = await tx.update(ordersTable)
-            .set({ status: "cancelled", updatedAt: new Date() })
+            .set({ status: "cancelled", updatedAt: now })
             .where(and(eq(ordersTable.id, order.id), eq(ordersTable.status, "pending")))
             .returning();
           if (!cancelled) return;
 
+          /* Restore stock for each item that had it decremented */
+          const orderItems = Array.isArray(order.items)
+            ? (order.items as Array<{ productId?: string; variantId?: string; quantity?: number }>)
+            : [];
+          for (const item of orderItems) {
+            const qty = Number(item.quantity) || 1;
+            if (item.variantId) {
+              await tx.execute(sql`
+                UPDATE product_variants
+                SET stock = stock + ${qty},
+                    in_stock = CASE WHEN stock + ${qty} > 0 THEN true ELSE in_stock END
+                WHERE id = ${item.variantId} AND stock IS NOT NULL
+              `);
+            }
+            if (item.productId) {
+              await tx.execute(sql`
+                UPDATE products
+                SET stock = stock + ${qty},
+                    in_stock = CASE WHEN stock + ${qty} > 0 THEN true ELSE in_stock END
+                WHERE id = ${item.productId} AND stock IS NOT NULL
+              `);
+            }
+          }
+
           if (order.paymentMethod === "wallet") {
             const refundAmt = parseFloat(order.total);
             if (refundAmt > 0) {
-              await tx.update(usersTable)
-                .set({ walletBalance: sql`wallet_balance + ${refundAmt.toFixed(2)}` })
-                .where(eq(usersTable.id, order.userId));
-              await tx.insert(walletTransactionsTable).values({
-                id: generateId(), userId: order.userId, type: "credit",
-                amount: refundAmt.toFixed(2),
-                description: `Auto-refund: order #${order.id.slice(-6).toUpperCase()} expired`,
-                reference: `refund:${order.id}`,
-              });
+              /* Guard against double-credit — check for existing refund transaction */
+              const [existingRefund] = await tx.select({ id: walletTransactionsTable.id })
+                .from(walletTransactionsTable)
+                .where(eq(walletTransactionsTable.reference, `refund:${order.id}`))
+                .limit(1);
+              if (!existingRefund) {
+                await tx.update(usersTable)
+                  .set({ walletBalance: sql`wallet_balance + ${refundAmt.toFixed(2)}` })
+                  .where(eq(usersTable.id, order.userId));
+                await tx.insert(walletTransactionsTable).values({
+                  id: generateId(), userId: order.userId, type: "credit",
+                  amount: refundAmt.toFixed(2),
+                  description: `Auto-refund: order #${order.id.slice(-6).toUpperCase()} expired`,
+                  reference: `refund:${order.id}`,
+                });
+                /* Mark refundedAt so the admin refund endpoint cannot double-credit */
+                await tx.update(ordersTable)
+                  .set({ refundedAt: now, refundedAmount: order.total })
+                  .where(eq(ordersTable.id, order.id));
+              }
             }
           }
 
@@ -118,7 +161,7 @@ setInterval(async () => {
   } catch (e) {
     logger.warn({ err: (e as Error).message }, "[auto-cancel] interval error");
   }
-}, 5 * 60_000);
+}, 60_000);
 
 function broadcastNewOrder(order: ReturnType<typeof mapOrder>, vendorId?: string | null) {
   /* Socket broadcast — only when socket.io is initialised. */
