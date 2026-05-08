@@ -25,8 +25,8 @@ const IS_PRODUCTION = process.env["IS_PRODUCTION"] === "true" || process.env["NO
    - responseData = '{}'                  → in_flight (concurrent duplicate → 409)
    - responseData = '{"statusCode":…}'    → success (replays original response)
    - Row absent                           → allow fresh attempt
-   TTL = 10 min, enforced on read.                                           ── */
-const WALLET_IDEM_TTL_MS = 10 * 60 * 1000;
+   TTL = 30 min (matches orders idempotency TTL), enforced on read.        ── */
+const WALLET_IDEM_TTL_MS = 30 * 60 * 1000;
 
 /* ── Atomic idempotency key acquisition ──────────────────────────────────────
    The INSERT ... ON CONFLICT DO NOTHING returns the inserted row only when the
