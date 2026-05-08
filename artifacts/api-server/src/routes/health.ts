@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { sql, count } from "drizzle-orm";
+import { sql, count, eq } from "drizzle-orm";
 import { platformSettingsTable } from "@workspace/db/schema";
 import { adminAuth } from "./admin-shared.js";
 import { checkSchemaDrift } from "../services/schemaDrift.service.js";
@@ -73,6 +73,19 @@ router.get("/", async (_req, res) => {
   const memoryPct = getMemoryPct();
   const diskPct   = getDiskPct();
 
+  /* Read the app version from platform settings — never fatal if unavailable */
+  let appVersion = "1.0.0";
+  if (db2 === "ok") {
+    try {
+      const [row] = await db
+        .select({ value: platformSettingsTable.value })
+        .from(platformSettingsTable)
+        .where(eq(platformSettingsTable.key, "app_version"))
+        .limit(1);
+      if (row?.value) appVersion = row.value;
+    } catch { /* ignore — appVersion defaults to 1.0.0 */ }
+  }
+
   res.status(httpStatus).json({
     status: overallStatus,
     db: db2,
@@ -80,6 +93,7 @@ router.get("/", async (_req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     serverEpoch: SERVER_EPOCH,
+    appVersion,
     p95Ms,
     dbQueryMs,
     memoryPct,

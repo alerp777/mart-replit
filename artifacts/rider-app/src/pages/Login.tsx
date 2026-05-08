@@ -10,9 +10,17 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { TwoFactorVerify, MagicLinkSender, executeCaptcha, loadGoogleGSIToken, loadFacebookAccessToken, formatPhoneForApi, canonicalizePhone, useAuthConfig } from "@workspace/auth-utils";
 import {
   Phone, Mail, User, Bike, Clock, Lightbulb, Eye, EyeOff,
-  ArrowLeft, Loader2, Shield, Wrench, AlertCircle, X,
+  ArrowLeft, Loader2, Shield, Wrench, AlertCircle, X, Fingerprint,
 } from "lucide-react";
 import { useOTPBypass } from "../hooks/useOTPBypass";
+import {
+  isBiometricAvailable,
+  isBiometricEnabled,
+  setBiometricEnabled as saveBiometricEnabled,
+  storeBiometricToken,
+  getBiometricToken,
+  verifyBiometric,
+} from "../lib/biometric";
 
 type LoginMethod = "phone" | "email" | "username" | "google" | "facebook" | "magicLink";
 type Step = "continue" | "input" | "otp" | "pending" | "rejected" | "2fa";
@@ -95,6 +103,69 @@ export default function Login() {
   const { bypassActive: otpBypassActive, bypassMessage: otpBypassMessage, remainingSeconds: bypassRemainingSeconds } = useOTPBypass(
     method === "phone" && phone.length >= 10 ? formatPhoneForApi(phone) : undefined
   );
+
+  /* ── Biometric auth state ── */
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabledState] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  const [pendingLoginData, setPendingLoginData] = useState<{ token: string; refreshToken?: string; profile: AuthUser } | null>(null);
+
+  useEffect(() => {
+    isBiometricAvailable().then(available => {
+      setBiometricAvailable(available);
+      if (available) isBiometricEnabled().then(setBiometricEnabledState);
+    });
+  }, []);
+
+  const handleBiometricLogin = async () => {
+    setBiometricLoading(true);
+    try {
+      const ok = await verifyBiometric();
+      if (!ok) { setBiometricLoading(false); return; }
+      const storedToken = await getBiometricToken();
+      if (!storedToken) {
+        setError("Biometric session expired. Please log in with your credentials.");
+        await saveBiometricEnabled(false);
+        setBiometricEnabledState(false);
+        setBiometricLoading(false);
+        return;
+      }
+      /* Use stored refresh token to obtain a fresh access token */
+      const res = await fetch(`${window.location.origin}/api/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: storedToken }),
+      });
+      if (!res.ok) {
+        setError("Biometric session expired. Please log in with your credentials.");
+        await saveBiometricEnabled(false);
+        setBiometricEnabledState(false);
+        setBiometricLoading(false);
+        return;
+      }
+      const data = await res.json();
+      await doLogin({ token: data.token, refreshToken: data.refreshToken ?? storedToken });
+    } catch {
+      setError("Biometric sign-in failed. Please use your credentials.");
+    }
+    setBiometricLoading(false);
+  };
+
+  const confirmBiometricEnrollment = async (enable: boolean) => {
+    setShowBiometricPrompt(false);
+    if (!pendingLoginData) return;
+    const { token, refreshToken, profile } = pendingLoginData;
+    setPendingLoginData(null);
+    if (enable && refreshToken) {
+      await saveBiometricEnabled(true);
+      await storeBiometricToken(refreshToken);
+      setBiometricEnabledState(true);
+    }
+    login(token, profile, refreshToken);
+  };
+
   const [otp, setOtp] = useState("");
   const [devOtp, setDevOtp] = useState("");
 
@@ -354,6 +425,13 @@ export default function Login() {
       api.clearTokens();
       const msg = fetchErr instanceof Error ? fetchErr.message : T("loginFailed");
       setError(`${T("loginFailed")} (${msg})`);
+      return;
+    }
+    /* Offer biometric enrollment on first successful login on a capable device */
+    const bioAvail = await isBiometricAvailable();
+    if (bioAvail && res.refreshToken && !(await isBiometricEnabled())) {
+      setPendingLoginData({ token: res.token, refreshToken: res.refreshToken, profile });
+      setShowBiometricPrompt(true);
       return;
     }
     login(res.token, profile, res.refreshToken);

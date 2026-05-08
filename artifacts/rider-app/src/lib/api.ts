@@ -34,8 +34,8 @@ async function preferencesSet(key: string, value: string): Promise<void> {
   try {
     const { Preferences } = await import("@capacitor/preferences");
     await Preferences.set({ key, value });
-  } catch {
-    /* Fall back silently (browser without Capacitor context) */
+  } catch (err) {
+    console.warn("[capacitor/preferences] preferencesSet failed — falling back to localStorage:", err);
     try { localStorage.setItem(key, value); } catch {}
   }
 }
@@ -45,7 +45,8 @@ async function preferencesGet(key: string): Promise<string> {
     const { Preferences } = await import("@capacitor/preferences");
     const { value } = await Preferences.get({ key });
     return value ?? "";
-  } catch {
+  } catch (err) {
+    console.warn("[capacitor/preferences] preferencesGet failed — falling back to localStorage:", err);
     try { return localStorage.getItem(key) ?? ""; } catch { return ""; }
   }
 }
@@ -54,7 +55,8 @@ async function preferencesRemove(key: string): Promise<void> {
   try {
     const { Preferences } = await import("@capacitor/preferences");
     await Preferences.remove({ key });
-  } catch {
+  } catch (err) {
+    console.warn("[capacitor/preferences] preferencesRemove failed — falling back to localStorage:", err);
     try { localStorage.removeItem(key); } catch {}
   }
 }
@@ -308,7 +310,7 @@ export function setApiTimeoutMs(ms: number): void {
   if (Number.isFinite(ms) && ms > 0) _apiTimeoutMs = Math.min(ms, 300_000);
 }
 
-export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudget = 2, _returnEnvelope = false): Promise<any> {
+export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudget = 2, _returnEnvelope = false, _5xxRetries = 3): Promise<any> {
   const token = getToken();
   const isFormData = opts.body instanceof FormData;
   const headers: Record<string, string> = {
@@ -336,6 +338,19 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
     res = await fetch(`${BASE}${path}`, { ...opts, headers, signal, credentials: "include" });
   } finally {
     clearTimeout(timeoutId);
+  }
+
+  /* ── 5xx exponential-backoff retry (3 attempts: 1 s / 2 s / 4 s) ────────
+     Server errors are transient by nature; retrying after a short back-off
+     recovers from momentary overloads without surfacing noise to the user.
+     Only 5xx is retried — 4xx errors reflect client-side problems and should
+     not be retried.  401 / 403 have their own dedicated handling below.    */
+  if (res.status >= 500 && _5xxRetries > 0) {
+    const attempt  = 4 - _5xxRetries;                  // 1, 2, 3
+    const delayMs  = 1000 * Math.pow(2, attempt - 1);  // 1 s, 2 s, 4 s
+    console.debug(`[api] 5xx retry ${attempt}/3 for ${path} (status ${res.status}) — waiting ${delayMs}ms`);
+    await new Promise(r => setTimeout(r, delayMs));
+    return apiFetch(path, opts, _retryBudget, _returnEnvelope, _5xxRetries - 1);
   }
 
   if (res.status === 401 && _retryBudget > 0) {

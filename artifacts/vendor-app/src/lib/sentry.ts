@@ -3,10 +3,11 @@ import * as Sentry from "@sentry/react";
 let _initialized = false;
 
 export function initSentry(dsn: string, environment: string, sampleRate: number, tracesSampleRate: number): void {
-  if (!dsn || _initialized) return;
+  const effectiveDsn = dsn || import.meta.env.VITE_SENTRY_DSN || "";
+  if (!effectiveDsn || _initialized) return;
   _initialized = true;
   Sentry.init({
-    dsn,
+    dsn: effectiveDsn,
     environment: environment || "production",
     sampleRate: sampleRate ?? 1.0,
     tracesSampleRate: tracesSampleRate ?? 0.1,

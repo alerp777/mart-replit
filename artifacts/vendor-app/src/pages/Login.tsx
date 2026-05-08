@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { Phone, Mail, User, Wrench, AlertCircle, X, Eye, EyeOff } from "lucide-react";
+import { Phone, Mail, User, Wrench, AlertCircle, X, Eye, EyeOff, Fingerprint, Loader2 } from "lucide-react";
+import {
+  isBiometricAvailable,
+  isBiometricEnabled,
+  setBiometricEnabled as saveBiometricEnabled,
+  storeBiometricToken,
+  getBiometricToken,
+  verifyBiometric,
+} from "../lib/biometric";
 import { useAuth } from "../lib/auth";
 import { api, apiFetch } from "../lib/api";
 import { vendorEnv } from "../lib/envValidation";
