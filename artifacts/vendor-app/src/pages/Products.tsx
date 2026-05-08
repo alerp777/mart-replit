@@ -69,7 +69,7 @@ function StockHistoryPanel({ productId }: { productId: string }) {
 
 export default function Products() {
   const qc = useQueryClient();
-  const { isOnline, pendingProductCount, productQueueErrors, enqueueProductAction } = useOfflineQueue();
+  const { isOnline, pendingProductCount, productQueueErrors, enqueueProductAction, retryProductQueueItem, dismissProductQueueError } = useOfflineQueue();
   const { config } = usePlatformConfig();
   const { symbol: currencySymbol, code: currencyCode } = useCurrency();
   const { language } = useLanguage();
@@ -784,29 +784,53 @@ export default function Products() {
       </div>
 
       <div className="px-4 py-4 space-y-3 md:px-0 md:py-4">
-        {(pendingProductCount > 0 || productQueueErrors.length > 0) && (
-          <div className={`rounded-2xl px-4 py-3 border ${productQueueErrors.length > 0 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+        {pendingProductCount > 0 && (
+          <div className="rounded-2xl px-4 py-3 border bg-amber-50 border-amber-200">
             <div className="flex items-center gap-3">
-              <span className="text-xl flex-shrink-0">{productQueueErrors.length > 0 ? "❌" : "⏳"}</span>
+              <span className="text-xl flex-shrink-0">⏳</span>
               <div className="flex-1 min-w-0">
-                {pendingProductCount > 0 && (
-                  <p className="text-sm font-bold text-amber-800">
-                    {pendingProductCount} product change{pendingProductCount > 1 ? "s" : ""} pending sync
-                  </p>
-                )}
-                {productQueueErrors.length > 0 && (
-                  <div className="mt-1 space-y-1">
-                    {productQueueErrors.map(err => (
-                      <p key={err.id} className="text-xs text-red-600 font-medium">
-                        Failed to sync {err.action} {err.productId ? `(#${err.productId.slice(-6)})` : ""}: {err.message}
-                      </p>
-                    ))}
-                  </div>
-                )}
-                {pendingProductCount > 0 && productQueueErrors.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-0.5">Will sync automatically when you reconnect</p>
-                )}
+                <p className="text-sm font-bold text-amber-800">
+                  {pendingProductCount} product change{pendingProductCount > 1 ? "s" : ""} pending sync
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">Will sync automatically when you reconnect</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {productQueueErrors.length > 0 && (
+          <div className="rounded-2xl border bg-red-50 border-red-200 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-red-100">
+              <span className="text-xl flex-shrink-0">❌</span>
+              <p className="text-sm font-bold text-red-800">
+                {productQueueErrors.length} product change{productQueueErrors.length > 1 ? "s" : ""} failed to sync
+              </p>
+            </div>
+            <div className="divide-y divide-red-100">
+              {productQueueErrors.map(err => (
+                <div key={err.id} className="px-4 py-3 flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-red-700 capitalize">
+                      {err.action} {err.productId ? `(#${err.productId.slice(-6)})` : ""}
+                    </p>
+                    <p className="text-xs text-red-500 mt-0.5 break-words">{err.message}</p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0 mt-0.5">
+                    <button
+                      onClick={() => retryProductQueueItem(err.id)}
+                      className="h-7 px-2.5 text-xs font-bold rounded-lg bg-red-600 text-white hover:bg-red-700 active:scale-95 transition-all"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      onClick={() => dismissProductQueueError(err.id)}
+                      className="h-7 px-2.5 text-xs font-bold rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 active:scale-95 transition-all"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

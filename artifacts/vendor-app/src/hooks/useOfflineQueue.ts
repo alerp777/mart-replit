@@ -22,6 +22,7 @@ export interface ProductQueueError {
   id: string;
   action: "create" | "update";
   productId?: string;
+  payload: Record<string, unknown>;
   message: string;
 }
 
@@ -194,6 +195,7 @@ export function useOfflineQueue() {
           id: item.id,
           action: item.action,
           productId: item.productId,
+          payload: item.payload,
           message: lastError || "Failed after maximum retries",
         });
       }
@@ -305,6 +307,52 @@ export function useOfflineQueue() {
     return null;
   }, [isOnline]);
 
+  const retryProductQueueItem = useCallback(async (itemId: string) => {
+    const failures = loadProductFailures();
+    const failure = failures.find(f => f.id === itemId);
+    if (!failure) return;
+
+    let success = false;
+    let lastError = "";
+    let attempts = 0;
+
+    while (attempts < MAX_RETRIES) {
+      try {
+        if (failure.action === "create") {
+          await api.createProduct(failure.payload as Parameters<typeof api.createProduct>[0]);
+        } else if (failure.action === "update" && failure.productId) {
+          await api.updateProduct(failure.productId, failure.payload as Parameters<typeof api.updateProduct>[1]);
+        }
+        success = true;
+        break;
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : "Unknown error";
+        attempts++;
+        if (attempts < MAX_RETRIES) await sleep(RETRY_DELAY_MS);
+      }
+    }
+
+    if (success) {
+      const updatedFailures = loadProductFailures().filter(f => f.id !== itemId);
+      saveProductFailures(updatedFailures);
+      setProductQueueErrors(updatedFailures);
+      await qc.invalidateQueries({ queryKey: ["vendor-products"] });
+      await qc.invalidateQueries({ queryKey: ["vendor-products-all"] });
+    } else {
+      const updatedFailures = loadProductFailures().map(f =>
+        f.id === itemId ? { ...f, message: lastError || "Failed after maximum retries" } : f
+      );
+      saveProductFailures(updatedFailures);
+      setProductQueueErrors(updatedFailures);
+    }
+  }, [qc]);
+
+  const dismissProductQueueError = useCallback((itemId: string) => {
+    const failures = loadProductFailures().filter(f => f.id !== itemId);
+    saveProductFailures(failures);
+    setProductQueueErrors(failures);
+  }, []);
+
   return {
     isOnline,
     isSyncing,
@@ -315,5 +363,7 @@ export function useOfflineQueue() {
     productQueueErrors,
     enqueueProductAction,
     flushProductQueue,
+    retryProductQueueItem,
+    dismissProductQueueError,
   };
 }
