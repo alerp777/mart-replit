@@ -28,31 +28,54 @@ const IS_PRODUCTION = process.env["IS_PRODUCTION"] === "true" || process.env["NO
    TTL = 10 min, enforced on read.                                           ── */
 const WALLET_IDEM_TTL_MS = 10 * 60 * 1000;
 
-async function walletIdemCheck(userId: string, scopedKey: string): Promise<{ state: "in_flight" } | { state: "success"; statusCode: number; body: unknown } | null> {
+/* ── Atomic idempotency key acquisition ──────────────────────────────────────
+   The INSERT ... ON CONFLICT DO NOTHING returns the inserted row only when the
+   key didn't previously exist.  We then re-SELECT to get the current state in
+   all cases, making the check+acquire a single round-trip.  This removes the
+   TOCTOU window that existed when check and insert were separate queries.    ── */
+async function walletIdemAcquire(userId: string, scopedKey: string): Promise<
+  | { acquired: true }
+  | { acquired: false; state: "in_flight" }
+  | { acquired: false; state: "success"; statusCode: number; body: unknown }
+> {
+  const expiry = new Date(Date.now() - WALLET_IDEM_TTL_MS);
   try {
-    const [row] = await db.select({ responseData: idempotencyKeysTable.responseData, createdAt: idempotencyKeysTable.createdAt })
+    /* Purge stale row first — idempotent, ignores errors */
+    await db.delete(idempotencyKeysTable)
+      .where(and(
+        eq(idempotencyKeysTable.userId, userId),
+        eq(idempotencyKeysTable.idempotencyKey, scopedKey),
+        sql`${idempotencyKeysTable.createdAt} < ${expiry}`,
+      )).catch(() => {});
+
+    /* Atomic insert: succeeds only when key is absent (no race window) */
+    const inserted = await db.insert(idempotencyKeysTable)
+      .values({ id: generateId(), userId, idempotencyKey: scopedKey, responseData: "{}" })
+      .onConflictDoNothing()
+      .returning({ id: idempotencyKeysTable.id });
+
+    if (inserted.length > 0) return { acquired: true };
+
+    /* Key already exists — fetch current state */
+    const [row] = await db.select({ responseData: idempotencyKeysTable.responseData })
       .from(idempotencyKeysTable)
       .where(and(eq(idempotencyKeysTable.userId, userId), eq(idempotencyKeysTable.idempotencyKey, scopedKey)))
       .limit(1);
-    if (!row) return null;
-    if (Date.now() - row.createdAt.getTime() > WALLET_IDEM_TTL_MS) {
-      db.delete(idempotencyKeysTable).where(and(eq(idempotencyKeysTable.userId, userId), eq(idempotencyKeysTable.idempotencyKey, scopedKey))).catch(() => {});
-      return null;
-    }
-    if (row.responseData === "{}") return { state: "in_flight" };
+
+    if (!row || row.responseData === "{}") return { acquired: false, state: "in_flight" };
+
     try {
       const parsed = JSON.parse(row.responseData);
-      if (parsed.statusCode !== undefined && parsed.body !== undefined) return { state: "success", statusCode: parsed.statusCode, body: parsed.body };
-    } catch { /* fall through */ }
-    return { state: "in_flight" };
-  } catch { return null; }
-}
+      if (parsed.statusCode !== undefined && parsed.body !== undefined) {
+        return { acquired: false, state: "success", statusCode: parsed.statusCode, body: parsed.body };
+      }
+    } catch { /* invalid stored data */ }
 
-async function walletIdemSetInflight(userId: string, scopedKey: string): Promise<void> {
-  await db.insert(idempotencyKeysTable)
-    .values({ id: generateId(), userId, idempotencyKey: scopedKey, responseData: "{}" })
-    .onConflictDoNothing()
-    .catch(() => {});
+    return { acquired: false, state: "in_flight" };
+  } catch {
+    /* On DB error, allow the operation to proceed (fail open) */
+    return { acquired: true };
+  }
 }
 
 async function walletIdemSetSuccess(userId: string, scopedKey: string, statusCode: number, body: unknown): Promise<void> {
@@ -297,18 +320,15 @@ router.post("/deposit", customerAuth, async (req, res) => {
   }
 
   const depositScopedKey = `deposit:${idempotencyKey}`;
-  const existing = await walletIdemCheck(userId, depositScopedKey);
-  if (existing) {
-    if (existing.state === "in_flight") {
+  const idemResult = await walletIdemAcquire(userId, depositScopedKey);
+  if (!idemResult.acquired) {
+    if (idemResult.state === "in_flight") {
       sendError(res, "Duplicate request — this deposit is already being processed.", 409);
       return;
     }
-    if (existing.state === "success") {
-      res.status(existing.statusCode).json(existing.body);
-      return;
-    }
+    res.status(idemResult.statusCode).json(idemResult.body);
+    return;
   }
-  await walletIdemSetInflight(userId, depositScopedKey);
 
   /* ── Duplicate Transaction ID check ──
      Normalize TxID (trim + uppercase) both on check and on storage
@@ -556,18 +576,15 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
   let sendScopedKey: string | null = null;
   if (idempotencyKey) {
     sendScopedKey = `send:${idempotencyKey}`;
-    const existing = await walletIdemCheck(senderUserId, sendScopedKey);
-    if (existing) {
-      if (existing.state === "in_flight") {
+    const idemResult = await walletIdemAcquire(senderUserId, sendScopedKey);
+    if (!idemResult.acquired) {
+      if (idemResult.state === "in_flight") {
         sendError(res, "Duplicate request — this transfer is already being processed.", 409);
         return;
       }
-      if (existing.state === "success") {
-        res.status(existing.statusCode).json(existing.body);
-        return;
-      }
+      res.status(idemResult.statusCode).json(idemResult.body);
+      return;
     }
-    await walletIdemSetInflight(senderUserId, sendScopedKey);
   }
 
   const s = await getPlatformSettings();
@@ -883,18 +900,15 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
   let withdrawScopedKey: string | null = null;
   if (idempotencyKey) {
     withdrawScopedKey = `withdraw:${idempotencyKey}`;
-    const existing = await walletIdemCheck(userId, withdrawScopedKey);
-    if (existing) {
-      if (existing.state === "in_flight") {
+    const idemResult = await walletIdemAcquire(userId, withdrawScopedKey);
+    if (!idemResult.acquired) {
+      if (idemResult.state === "in_flight") {
         sendError(res, "Duplicate request — this withdrawal is already being processed.", 409);
         return;
       }
-      if (existing.state === "success") {
-        res.status(existing.statusCode).json(existing.body);
-        return;
-      }
+      res.status(idemResult.statusCode).json(idemResult.body);
+      return;
     }
-    await walletIdemSetInflight(userId, withdrawScopedKey);
   }
 
   const clearKey = () => { if (withdrawScopedKey) walletIdemDelete(userId, withdrawScopedKey).catch(() => {}); };

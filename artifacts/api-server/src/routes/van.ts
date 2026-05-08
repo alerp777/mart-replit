@@ -510,6 +510,62 @@ router.post("/bookings", customerAuth, paymentLimiter, async (req, res) => {
   }
 });
 
+/* ── GET /van/bookings/:id/driver-location — customer tracks live van position ──
+   Reads from live_locations when the socket feed is unavailable.           ── */
+router.get("/bookings/:id/driver-location", customerAuth, async (req, res) => {
+  try {
+    const userId = req.customerId!;
+    const bookingId = req.params["id"]!;
+
+    const [booking] = await db.select({
+      id: vanBookingsTable.id,
+      scheduleId: vanBookingsTable.scheduleId,
+      userId: vanBookingsTable.userId,
+      status: vanBookingsTable.status,
+    }).from(vanBookingsTable).where(eq(vanBookingsTable.id, bookingId)).limit(1);
+
+    if (!booking) { sendNotFound(res, "Booking not found"); return; }
+    if (booking.userId !== userId) { sendForbidden(res, "Access denied"); return; }
+    if (booking.status === "cancelled") { sendError(res, "Booking is cancelled", 400); return; }
+
+    const [schedule] = await db.select({ driverId: vanSchedulesTable.driverId, tripStatus: vanSchedulesTable.tripStatus })
+      .from(vanSchedulesTable).where(eq(vanSchedulesTable.id, booking.scheduleId)).limit(1);
+
+    if (!schedule?.driverId) {
+      sendSuccess(res, { available: false, reason: "driver_not_assigned" });
+      return;
+    }
+
+    const [loc] = await db.select({
+      latitude: liveLocationsTable.latitude,
+      longitude: liveLocationsTable.longitude,
+      lastSeen: liveLocationsTable.lastSeen,
+      updatedAt: liveLocationsTable.updatedAt,
+    }).from(liveLocationsTable)
+      .where(and(eq(liveLocationsTable.userId, schedule.driverId), eq(liveLocationsTable.role, "van_driver")))
+      .limit(1);
+
+    if (!loc) {
+      sendSuccess(res, { available: false, tripStatus: schedule.tripStatus, reason: "location_not_yet_shared" });
+      return;
+    }
+
+    const staleSecs = Math.floor((Date.now() - (loc.updatedAt?.getTime() ?? 0)) / 1000);
+
+    sendSuccess(res, {
+      available: true,
+      tripStatus: schedule.tripStatus,
+      latitude: parseFloat(loc.latitude),
+      longitude: parseFloat(loc.longitude),
+      lastSeenAt: loc.lastSeen?.toISOString() ?? loc.updatedAt.toISOString(),
+      staleSecs,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "[van/driver-location] error");
+    sendError(res, "Could not fetch driver location.", 500);
+  }
+});
+
 router.get("/bookings", customerAuth, async (req, res) => {
   try {
     const userId = req.customerId!;

@@ -6,6 +6,41 @@ import { sendSuccess, sendInternalError } from "../lib/response.js";
 
 const router: IRouter = Router();
 
+/* ── GET /api/stats — real platform KPIs ─────────────────────────────────── */
+router.get("/", async (_req, res) => {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      [ordersResult],
+      [revenueResult],
+      [activeUsersResult],
+      [activeRidersResult],
+      [activeVendorsResult],
+      [ridesResult],
+    ] = await Promise.all([
+      db.select({ c: count() }).from(ordersTable).where(gte(ordersTable.createdAt, thirtyDaysAgo)),
+      db.select({ total: sum(ordersTable.total) }).from(ordersTable).where(gte(ordersTable.createdAt, thirtyDaysAgo)),
+      db.select({ c: count() }).from(usersTable).where(eq(usersTable.role, "customer")),
+      db.select({ c: count() }).from(usersTable).where(eq(usersTable.role, "rider")),
+      db.select({ c: count() }).from(vendorProfilesTable).where(eq(vendorProfilesTable.storeIsOpen, true)),
+      db.select({ c: count() }).from(ridesTable).where(gte(ridesTable.createdAt, thirtyDaysAgo)),
+    ]);
+
+    sendSuccess(res, {
+      totalOrders: Number(ordersResult?.c ?? 0),
+      totalRevenue: parseFloat(String(revenueResult?.total ?? "0")) || 0,
+      activeUsers: Number(activeUsersResult?.c ?? 0),
+      activeRiders: Number(activeRidersResult?.c ?? 0),
+      activeVendors: Number(activeVendorsResult?.c ?? 0),
+      rideCount: Number(ridesResult?.c ?? 0),
+    });
+  } catch {
+    sendInternalError(res, "Failed to fetch stats");
+  }
+});
+
+/* ── GET /api/stats/public — legacy alias kept for backward compat ─────── */
 router.get("/public", async (_req, res) => {
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);

@@ -37,29 +37,29 @@ router.put("/snapshot", customerAuth, async (req, res) => {
     return;
   }
 
-  /* ── Per-item validation ── */
-  for (const item of items as Array<Record<string, unknown>>) {
-    const qty = Number(item["quantity"]);
-    if (!Number.isFinite(qty) || qty < 1) {
-      sendError(res, `Item quantity must be at least 1`, 400);
-      return;
-    }
-    if (qty > MAX_ITEM_QUANTITY) {
-      sendError(res, `Item quantity cannot exceed ${MAX_ITEM_QUANTITY}`, 400);
-      return;
-    }
-  }
+  const typedItems = items as Array<Record<string, unknown>>;
 
-  /* ── Validate product existence and stock for items with a productId ── */
-  const productIds = (items as Array<Record<string, unknown>>)
+  /* ── Per-item validation — collect ALL errors then return 422 ── */
+  const productIds = typedItems
     .map(it => it["productId"])
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-  const variantIds = (items as Array<Record<string, unknown>>)
+  const variantIds = typedItems
     .map(it => it["variantId"])
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 
   try {
+    const validationErrors: Array<{ productId?: string; variantId?: string; quantity?: number; error: string; max?: number }> = [];
+
+    for (const item of typedItems) {
+      const qty = Number(item["quantity"]);
+      if (!Number.isFinite(qty) || qty < 1) {
+        validationErrors.push({ productId: item["productId"] as string | undefined, error: "invalid_quantity" });
+      } else if (qty > MAX_ITEM_QUANTITY) {
+        validationErrors.push({ productId: item["productId"] as string | undefined, quantity: qty, error: "quantity_exceeded", max: MAX_ITEM_QUANTITY });
+      }
+    }
+
     if (productIds.length > 0) {
       const products = await db
         .select({ id: productsTable.id, inStock: productsTable.inStock })
@@ -71,12 +71,9 @@ router.put("/snapshot", customerAuth, async (req, res) => {
       for (const productId of productIds) {
         const product = productMap.get(productId);
         if (!product) {
-          sendError(res, `Product ${productId} not found`, 400);
-          return;
-        }
-        if (!product.inStock) {
-          sendError(res, `Product ${productId} is out of stock`, 400);
-          return;
+          validationErrors.push({ productId, error: "not_found" });
+        } else if (!product.inStock) {
+          validationErrors.push({ productId, error: "out_of_stock" });
         }
       }
     }
@@ -92,14 +89,16 @@ router.put("/snapshot", customerAuth, async (req, res) => {
       for (const variantId of variantIds) {
         const variant = variantMap.get(variantId);
         if (!variant) {
-          sendError(res, `Product variant ${variantId} not found`, 400);
-          return;
-        }
-        if (!variant.inStock) {
-          sendError(res, `Product variant ${variantId} is out of stock`, 400);
-          return;
+          validationErrors.push({ variantId, error: "not_found" });
+        } else if (!variant.inStock) {
+          validationErrors.push({ variantId, error: "out_of_stock" });
         }
       }
+    }
+
+    if (validationErrors.length > 0) {
+      res.status(422).json({ error: "Cart validation failed", errors: validationErrors });
+      return;
     }
 
     await db

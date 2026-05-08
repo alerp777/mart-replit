@@ -10,13 +10,13 @@ import { customerAuth, riderAuth, addSecurityEvent, idorGuard } from "../middlew
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
-import { prescriptionRefMap } from "./uploads.js";
+import { prescriptionRefMap, rxGetRef } from "./uploads.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 
 const router: IRouter = Router();
 
 async function resolveAndPersistRxPhoto(orderId: string, refId: string): Promise<string | null> {
-  const resolvedUrl = prescriptionRefMap.get(refId);
+  const resolvedUrl = await rxGetRef(refId);
   if (!resolvedUrl) return null;
   await db.update(pharmacyOrdersTable)
     .set({ prescriptionPhotoUrl: resolvedUrl, updatedAt: new Date() })
@@ -159,10 +159,10 @@ router.post("/", customerAuth, async (req, res) => {
   if (prescriptionPhotoUri?.trim()) {
     const rawUri = prescriptionPhotoUri.trim();
     if (rawUri.startsWith("rx-")) {
-      let resolved = prescriptionRefMap.get(rawUri);
+      let resolved = await rxGetRef(rawUri);
       if (!resolved) {
         await new Promise((r) => setTimeout(r, 1500));
-        resolved = prescriptionRefMap.get(rawUri);
+        resolved = await rxGetRef(rawUri);
       }
       resolvedPhotoUrl = resolved ?? rawUri;
     } else {

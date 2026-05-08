@@ -10,6 +10,7 @@ import sharp from "sharp";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
 import { customerAuth, riderAuth, requireRole, getCachedSettings } from "../middleware/security.js";
 import { getPlatformSettings } from "./admin-shared.js";
+import { redisClient } from "../lib/redis.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -55,6 +56,35 @@ async function getUploadLimits() {
 }
 
 const prescriptionRefMap = new Map<string, string>();
+const RX_REDIS_PREFIX = "rx:ref:";
+const RX_REF_TTL_SECS = 60 * 60; /* 1 hour, same as setTimeout below */
+
+async function rxSetRef(refId: string, url: string): Promise<void> {
+  prescriptionRefMap.set(refId, url);
+  if (redisClient) {
+    await redisClient.set(`${RX_REDIS_PREFIX}${refId}`, url, "EX", RX_REF_TTL_SECS).catch(() => {});
+  }
+}
+
+async function rxGetRef(refId: string): Promise<string | null> {
+  const inMem = prescriptionRefMap.get(refId);
+  if (inMem) return inMem;
+  if (redisClient) {
+    const stored = await redisClient.get(`${RX_REDIS_PREFIX}${refId}`).catch(() => null);
+    if (stored) {
+      prescriptionRefMap.set(refId, stored);
+      return stored;
+    }
+  }
+  return null;
+}
+
+async function rxDeleteRef(refId: string): Promise<void> {
+  prescriptionRefMap.delete(refId);
+  if (redisClient) {
+    await redisClient.del(`${RX_REDIS_PREFIX}${refId}`).catch(() => {});
+  }
+}
 
 async function ensureDir() {
   await mkdir(UPLOADS_DIR, { recursive: true });
@@ -295,9 +325,9 @@ router.post("/prescription", customerAuth, async (req, res) => {
     }
 
     const url = await saveBuffer(buffer, "rx", mime);
-    prescriptionRefMap.set(refId, url);
+    await rxSetRef(refId, url);
 
-    setTimeout(() => prescriptionRefMap.delete(refId), 60 * 60 * 1000);
+    setTimeout(() => rxDeleteRef(refId).catch(() => {}), 60 * 60 * 1000);
 
     sendCreated(res, { url, refId });
   } catch (e: unknown) {
@@ -306,8 +336,8 @@ router.post("/prescription", customerAuth, async (req, res) => {
   }
 });
 
-router.get("/prescription/resolve/:refId", (req, res) => {
-  const url = prescriptionRefMap.get(req.params.refId!);
+router.get("/prescription/resolve/:refId", async (req, res) => {
+  const url = await rxGetRef(req.params.refId!);
   if (url) {
     sendSuccess(res, { url });
   } else {
@@ -437,6 +467,6 @@ router.post(
   },
 );
 
-export { prescriptionRefMap };
+export { prescriptionRefMap, rxGetRef };
 
 export default router;
