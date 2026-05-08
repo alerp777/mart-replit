@@ -103,6 +103,76 @@ router.post("/callback/easypaisa", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Spec-path aliases: /api/payments/jazzcash/callback
+//                     /api/payments/easypaisa/callback
+//  These aliases satisfy the task spec path contract. The routes above
+//  (/callback/jazzcash, /callback/easypaisa) remain for gateway return URLs
+//  already configured in production.
+// ═══════════════════════════════════════════════════════════════════════════════
+router.post("/jazzcash/callback", async (req, res) => {
+  const s      = await getPlatformSettings();
+  const salt   = s["jazzcash_salt"] ?? "";
+  const mode   = s["jazzcash_mode"] ?? "sandbox";
+  const params = req.body as Record<string, string>;
+
+  if (mode !== "sandbox") {
+    if (!salt) { sendError(res, "JazzCash salt not configured — cannot verify callback", 500); return; }
+    const receivedHash      = params["pp_SecureHash"];
+    const paramsWithoutHash = { ...params };
+    delete paramsWithoutHash["pp_SecureHash"];
+    if (receivedHash !== buildJazzCashHash(paramsWithoutHash, salt)) {
+      res.status(400).json({ error: "Hash mismatch — possible tampering" }); return;
+    }
+  }
+
+  const responseCode = params["pp_ResponseCode"];
+  const txnRef       = params["pp_TxnRefNo"];
+  const orderId      = params["pp_BillReference"];
+
+  if (responseCode === "000") {
+    if (orderId) await confirmOrder(orderId);
+    if (txnRef)  await resolvePayment(txnRef, "success");
+    sendSuccess(res, { txnRef, orderId }, "JazzCash payment confirmed ✅");
+  } else {
+    if (txnRef) await resolvePayment(txnRef, "failed");
+    sendSuccess(res, { txnRef, responseCode }, "JazzCash payment failed or cancelled");
+  }
+});
+
+router.post("/easypaisa/callback", async (req, res) => {
+  const s        = await getPlatformSettings();
+  const hashKey  = s["easypaisa_hash_key"] ?? "";
+  const storeId  = s["easypaisa_store_id"] ?? "";
+  const mode     = s["easypaisa_mode"] ?? "sandbox";
+  const body     = req.body as Record<string, string>;
+
+  const receivedHash = body["encryptedHashRequest"];
+  const orderId      = body["orderId"];
+  const responseCode = body["responseCode"];
+  const txnRefNo     = body["transactionReferenceNumber"];
+  const amount       = body["transactionAmount"];
+
+  if (mode !== "sandbox") {
+    if (!hashKey) { sendError(res, "EasyPaisa hash key not configured — cannot verify callback", 500); return; }
+    if (receivedHash !== buildEasyPaisaHash([storeId, orderId, amount, "PKR", ""], hashKey)) {
+      res.status(400).json({ error: "Hash mismatch — verify EasyPaisa credentials" }); return;
+    }
+  }
+
+  if (responseCode === "0000") {
+    if (orderId) {
+      const [order] = await db.select({ id: ordersTable.id }).from(ordersTable).where(eq(ordersTable.txnRef, orderId)).limit(1);
+      if (order) await confirmOrder(order.id);
+      await resolvePayment(orderId, "success");
+    }
+    sendSuccess(res, { txnRefNo }, "EasyPaisa payment confirmed ✅");
+  } else {
+    if (orderId) await resolvePayment(orderId, "failed");
+    sendSuccess(res, { txnRefNo, responseCode }, "EasyPaisa payment failed");
+  }
+});
+
 /* ── All other payment routes go through the rate limiter ── */
 router.use(paymentLimiter);
 

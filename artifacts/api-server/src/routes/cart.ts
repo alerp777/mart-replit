@@ -49,14 +49,20 @@ router.put("/snapshot", customerAuth, async (req, res) => {
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 
   try {
-    const validationErrors: Array<{ productId?: string; variantId?: string; quantity?: number; error: string; max?: number }> = [];
+    const validationErrors: Array<{ index: number; productId?: string; variantId?: string; quantity?: number; error: string; max?: number }> = [];
 
-    for (const item of typedItems) {
+    for (const [idx, item] of typedItems.entries()) {
+      const pid = item["productId"];
+      /* Every line item must reference a valid product */
+      if (typeof pid !== "string" || pid.trim().length === 0) {
+        validationErrors.push({ index: idx, error: "missing_product_id" });
+        continue;
+      }
       const qty = Number(item["quantity"]);
       if (!Number.isFinite(qty) || qty < 1) {
-        validationErrors.push({ productId: item["productId"] as string | undefined, error: "invalid_quantity" });
+        validationErrors.push({ index: idx, productId: pid, error: "invalid_quantity" });
       } else if (qty > MAX_ITEM_QUANTITY) {
-        validationErrors.push({ productId: item["productId"] as string | undefined, quantity: qty, error: "quantity_exceeded", max: MAX_ITEM_QUANTITY });
+        validationErrors.push({ index: idx, productId: pid, quantity: qty, error: "quantity_exceeded", max: MAX_ITEM_QUANTITY });
       }
     }
 

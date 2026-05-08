@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { productsTable, vendorProfilesTable, ordersTable, usersTable, ridesTable } from "@workspace/db/schema";
-import { count, countDistinct, eq, gte, inArray, sum } from "drizzle-orm";
+import { and, count, countDistinct, eq, gte, inArray, sum } from "drizzle-orm";
 import { sendSuccess, sendInternalError } from "../lib/response.js";
 
 const router: IRouter = Router();
@@ -29,13 +29,19 @@ router.get("/", async (_req, res) => {
       db.select({ c: countDistinct(ordersTable.userId) }).from(ordersTable).where(gte(ordersTable.createdAt, thirtyDaysAgo)),
       /* Riders who completed at least one delivery in the last 30 days */
       db.select({ c: countDistinct(ordersTable.riderId) }).from(ordersTable).where(
-        inArray(ordersTable.status, ["delivered", "completed"]),
+        and(
+          inArray(ordersTable.status, ["delivered", "completed"]),
+          gte(ordersTable.createdAt, thirtyDaysAgo),
+        ),
       ),
       /* Vendors with their store currently open */
       db.select({ c: count() }).from(vendorProfilesTable).where(eq(vendorProfilesTable.storeIsOpen, true)),
-      /* Completed rides this month */
+      /* Completed rides this calendar month */
       db.select({ c: count() }).from(ridesTable).where(
-        inArray(ridesTable.status, ["completed"]),
+        and(
+          inArray(ridesTable.status, ["completed"]),
+          gte(ridesTable.createdAt, new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+        ),
       ),
     ]);
 
