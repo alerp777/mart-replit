@@ -2,8 +2,8 @@ import { type ReactNode } from "react";
 import { Header } from "./Header";
 
 interface PageHeaderProps {
-  title: string;
-  subtitle?: string;
+  title: ReactNode;
+  subtitle?: ReactNode;
   actions?: ReactNode;
   mobileContent?: ReactNode;
 }

@@ -361,7 +361,14 @@ export default function Dashboard() {
       )}
       {/* ── Header ── */}
       <PageHeader
-        title={user?.storeName || "Dashboard"}
+        title={
+          <span className="flex items-center gap-2">
+            <span>{user?.storeName || "Dashboard"}</span>
+            {user?.isVerified && (
+              <span className="text-[11px] font-bold bg-green-100 text-green-700 md:bg-white/20 md:text-white px-2 py-0.5 rounded-full">✓ Verified</span>
+            )}
+          </span>
+        }
         subtitle={user?.storeCategory ? `${user.storeCategory} · ${config.platform.appName} Partner` : `${config.platform.appName} Vendor Portal`}
         actions={
           <div className="flex items-center gap-2">
@@ -427,7 +434,12 @@ export default function Dashboard() {
         {/* Desktop wallet bar */}
         <div className="hidden md:flex items-center gap-4 px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl text-white shadow-sm mb-6">
           <div className="flex-1">
-            <p className="text-orange-100 text-xs font-medium">{T("walletBalance")}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-orange-100 text-xs font-medium">{T("walletBalance")}</p>
+              {user?.isVerified && (
+                <span className="text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-full">✓ Verified</span>
+              )}
+            </div>
             <p className="text-3xl font-extrabold">{fc(user?.walletBalance || 0)}</p>
           </div>
           <div className="text-center border-l border-white/20 pl-4">
@@ -486,6 +498,21 @@ export default function Dashboard() {
           const pendingReqs: any[] = da.pendingRequests || [];
           const pendingServiceTypes = new Set(pendingReqs.map((r: any) => r.serviceType || "all"));
           const anyActive = Object.values(statuses).some(s => s.active);
+          const allPending = Object.keys(statuses).length > 0 &&
+            !anyActive &&
+            Object.keys(statuses).every(svc => pendingServiceTypes.has(svc) || pendingServiceTypes.has("all"));
+
+          if (allPending) {
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3 md:mb-6">
+                <Truck className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-sm text-blue-800">Your delivery access request is under review</p>
+                  <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">Admin is reviewing your request. You'll be notified once approved — no action needed right now.</p>
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div className={`rounded-2xl overflow-hidden md:mb-6 ${
@@ -511,7 +538,7 @@ export default function Dashboard() {
                         </span>
                       ) : hasPendingForService ? (
                         <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
-                          Pending
+                          ⏳ Pending review
                         </span>
                       ) : (
                         <button

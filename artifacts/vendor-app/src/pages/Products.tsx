@@ -286,6 +286,45 @@ export default function Products() {
     else showToast("❌ No valid rows found — check format");
   };
 
+  const [bulkImportResults, setBulkImportResults] = useState<Array<{ name: string; status: "pending" | "success" | "error"; message?: string }> | null>(null);
+  const [bulkImporting, setBulkImporting] = useState(false);
+
+  const runBulkImport = useCallback(async () => {
+    const valid = bulkRows.filter(r => r.name.trim() && r.price && !Number.isNaN(Number(r.price)));
+    if (totalProductCount === null) { showToast("Cannot verify product count — please wait and try again."); return; }
+    if (totalProductCount + valid.length > maxItems) { showToast(`Product limit reached. You can add at most ${maxItems - totalProductCount} more product(s).`); return; }
+    if (valid.length === 0) return;
+    const initial: Array<{ name: string; status: "pending" | "success" | "error"; message?: string }> = valid.map(r => ({ name: r.name.trim(), status: "pending" }));
+    setBulkImportResults(initial);
+    setBulkImporting(true);
+    let successCount = 0;
+    const results: Array<{ name: string; status: "pending" | "success" | "error"; message?: string }> = [...initial];
+    for (let i = 0; i < valid.length; i++) {
+      const r = valid[i]!;
+      try {
+        await api.createProduct({
+          name:        r.name.trim(),
+          price:       Number(r.price),
+          description: r.description.trim() || null,
+          image:       r.image.trim() || null,
+          category:    r.category.trim() || bulkCat || "general",
+          unit:        r.unit.trim() || null,
+          stock:       r.stock ? Number(r.stock) : null,
+          type:        r.type || "mart",
+        });
+        results[i] = { ...results[i]!, status: "success" };
+        successCount++;
+      } catch (e) {
+        results[i] = { ...results[i]!, status: "error", message: e instanceof Error ? e.message : "Failed" };
+      }
+      setBulkImportResults([...results]);
+    }
+    setBulkImporting(false);
+    qc.invalidateQueries({ queryKey: ["vendor-products"] });
+    qc.invalidateQueries({ queryKey: ["vendor-products-all"] });
+    showToast(`✅ ${successCount} of ${valid.length} products added!`);
+  }, [bulkRows, totalProductCount, maxItems, bulkCat, qc]);
+
   const bulkMut = useMutation({
     mutationFn: () => {
       const valid = bulkRows.filter(r => r.name.trim() && r.price && !Number.isNaN(Number(r.price)));
@@ -670,12 +709,35 @@ export default function Products() {
               <p className="text-xs text-amber-700 font-medium">⚠️ Rows missing Name or Price will be skipped. Only {validRows.length} complete rows will be added.</p>
             </div>
           )}
-          <div className="flex gap-3">
-            <button onClick={() => setView("list")} className={BTN_SECONDARY}>Cancel</button>
-            <button onClick={() => bulkMut.mutate()} disabled={bulkMut.isPending || validRows.length === 0 || allDataLoading} className={BTN_PRIMARY}>
-              {allDataLoading ? "Checking limit..." : bulkMut.isPending ? "Adding..." : `➕ Add ${validRows.length} Products`}
-            </button>
-          </div>
+          {bulkImportResults && (
+            <div className="mt-4 space-y-1.5">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Import Progress</p>
+              {bulkImportResults.map((r, i) => (
+                <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm ${r.status === "success" ? "bg-green-50" : r.status === "error" ? "bg-red-50" : "bg-gray-50"}`}>
+                  <span className="text-base flex-shrink-0">
+                    {r.status === "success" ? "✅" : r.status === "error" ? "❌" : <span className="w-4 h-4 border-2 border-orange-400 border-t-transparent rounded-full animate-spin inline-block"/>}
+                  </span>
+                  <span className="flex-1 font-medium text-gray-800 truncate">{r.name}</span>
+                  {r.status === "error" && r.message && <span className="text-xs text-red-500 truncate max-w-[120px]">{r.message}</span>}
+                  {r.status === "success" && <span className="text-xs text-green-600 font-bold">Added</span>}
+                  {r.status === "pending" && <span className="text-xs text-gray-400">Waiting...</span>}
+                </div>
+              ))}
+              {!bulkImporting && (
+                <button onClick={() => { setBulkImportResults(null); setView("list"); setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}]); setBulkCat(""); }} className={`mt-3 ${BTN_PRIMARY}`}>
+                  Done
+                </button>
+              )}
+            </div>
+          )}
+          {!bulkImportResults && (
+            <div className="flex gap-3">
+              <button onClick={() => setView("list")} className={BTN_SECONDARY}>Cancel</button>
+              <button onClick={runBulkImport} disabled={bulkImporting || validRows.length === 0 || allDataLoading} className={BTN_PRIMARY}>
+                {allDataLoading ? "Checking limit..." : bulkImporting ? "Adding..." : `➕ Add ${validRows.length} Products`}
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {Toast}

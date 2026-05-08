@@ -83,6 +83,30 @@ function EmptyState({ msg }: { msg: string }) {
   return <div className="flex items-center justify-center text-gray-400 text-sm py-12">{msg}</div>;
 }
 
+function exportAnalyticsCsv(
+  trendSeries: Array<{ key: string; label: string; orders: number; revenue: number }>,
+  topProducts: Array<{ productId: string; name: string; orders: number; quantity?: number; revenue: number }>,
+  rangeLabel: string,
+) {
+  const rows: string[] = [];
+  rows.push(`AJKMart Analytics Export — ${rangeLabel}`);
+  rows.push("");
+  rows.push("Revenue & Orders Trend");
+  rows.push("Period,Orders,Revenue");
+  trendSeries.forEach(d => rows.push(`"${d.label}",${d.orders},${d.revenue.toFixed(2)}`));
+  rows.push("");
+  rows.push("Top Products");
+  rows.push("Product,Orders,Revenue");
+  topProducts.forEach(p => rows.push(`"${p.name}",${p.orders},${Number(p.revenue).toFixed(2)}`));
+  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `analytics_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Analytics() {
   const [preset, setPreset] = useState<RangePreset>(30);
   const [customFrom, setCustomFrom] = useState<string>("");
@@ -162,6 +186,14 @@ export default function Analytics() {
                 ${preset === "custom" ? "bg-white text-orange-500 md:bg-orange-500 md:text-white" : "bg-white/20 text-white md:bg-gray-100 md:text-gray-600"}`}>
               Custom
             </button>
+            {!loading && trendSeries.length > 0 && (
+              <button
+                onClick={() => exportAnalyticsCsv(trendSeries, topProducts, rangeLabel)}
+                className="h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 bg-white/20 text-white md:bg-green-50 md:text-green-700 transition-all"
+              >
+                ⬇ Export CSV
+              </button>
+            )}
           </div>
         }
       />

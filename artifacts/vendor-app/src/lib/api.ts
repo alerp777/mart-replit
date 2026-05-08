@@ -305,6 +305,8 @@ export const api = {
   getWallet:      () => apiFetch("/vendor/wallet/transactions"),
   withdrawWallet: (data: { amount: number; bankName: string; accountNumber: string; accountTitle: string; note?: string }) =>
     apiFetch("/vendor/wallet/withdraw", { method: "POST", body: JSON.stringify(data) }),
+  depositWallet: (data: { amount: number; paymentMethod: string; paymentReference: string; note?: string }) =>
+    apiFetch("/vendor/wallet/deposit", { method: "POST", body: JSON.stringify(data) }),
 
   /* Image Upload */
   uploadImage: async (file: File): Promise<{ url: string }> => {
@@ -328,6 +330,13 @@ export const api = {
       reader.onerror = () => reject(new Error("Failed to read file"));
       reader.readAsDataURL(file);
     });
+  },
+
+  uploadAudio: async (file: File): Promise<{ url: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const result = await apiFetch("/uploads/audio", { method: "POST", body: formData });
+    return { url: result.url };
   },
 
   uploadVideo: async (file: File): Promise<{ url: string }> => {

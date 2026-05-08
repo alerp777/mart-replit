@@ -140,6 +140,101 @@ function WithdrawModal({ balance, minPayout, maxPayout, onClose, onSuccess, defa
   );
 }
 
+const DEPOSIT_METHODS = ["JazzCash","EasyPaisa","Bank Transfer","Other"];
+
+function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const { symbol: currencySymbol } = useCurrency();
+  const fcLocal = (n: number) => fc(n, currencySymbol);
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("");
+  const [ref, setRef] = useState("");
+  const [note, setNote] = useState("");
+  const [step, setStep] = useState<"form"|"confirm"|"done">("form");
+  const [err, setErr] = useState("");
+  const qc = useQueryClient();
+  const mut = useMutation({
+    mutationFn: () => api.depositWallet({ amount: Number(amount), paymentMethod: method, paymentReference: ref, note }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-wallet"] }); setStep("done"); },
+    onError: (e: Error) => setErr(e.message),
+  });
+  const validate = () => {
+    const amt = Number(amount);
+    if (!amount || isNaN(amt) || amt <= 0) { setErr("Valid amount required"); return; }
+    if (amt > 100000) { setErr("Maximum single deposit is Rs. 100,000"); return; }
+    if (!method) { setErr("Select a payment method"); return; }
+    if (!ref.trim()) { setErr("Payment reference / transaction ID required"); return; }
+    setErr(""); setStep("confirm");
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        {step === "done" ? (
+          <div className="p-8 text-center">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
+            <h3 className="text-xl font-extrabold text-gray-800">Deposit Request Submitted!</h3>
+            <p className="text-gray-500 mt-2 text-sm">Your deposit request of <span className="font-bold text-orange-500">{fcLocal(Number(amount))}</span> via {method} has been sent to admin for verification.</p>
+            <div className="mt-4 bg-blue-50 rounded-2xl p-4 text-left space-y-1.5">
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Method</span><span className="font-bold">{method}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Reference</span><span className="font-bold">{ref}</span></div>
+            </div>
+            <button onClick={() => { onSuccess(); onClose(); }} className={`mt-6 ${BTN_PRIMARY}`}>Done</button>
+          </div>
+        ) : step === "confirm" ? (
+          <div className="p-6">
+            <h3 className="text-lg font-extrabold text-gray-800 mb-4">Confirm Deposit</h3>
+            <div className="bg-green-50 rounded-2xl p-4 space-y-2 mb-5">
+              <div className="flex justify-between"><span className="text-gray-500 text-sm">Amount</span><span className="font-extrabold text-green-600 text-lg">{fcLocal(Number(amount))}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Via</span><span className="font-bold">{method}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Ref. ID</span><span className="font-bold">{ref}</span></div>
+            </div>
+            <div className="bg-blue-50 rounded-xl p-3 mb-4">
+              <p className="text-xs text-blue-700 font-medium">💡 Admin will verify your payment and credit your wallet within 24–48 hours.</p>
+            </div>
+            {err && <p className="text-red-500 text-sm font-semibold mb-3">⚠️ {err}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => { setStep("form"); setErr(""); }} className={BTN_SECONDARY}>← Edit</button>
+              <button onClick={() => mut.mutate()} disabled={mut.isPending} className={BTN_PRIMARY}>{mut.isPending ? "Submitting..." : "✓ Confirm Deposit"}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-extrabold text-gray-800">💳 Deposit / Top-Up</h3>
+              <button onClick={onClose} className="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-xl font-bold text-gray-500">✕</button>
+            </div>
+            <div className="bg-blue-50 rounded-2xl p-4 mb-5">
+              <p className="text-xs text-blue-700 font-medium leading-relaxed">Send payment via JazzCash, EasyPaisa, or Bank Transfer, then enter the transaction details below. Admin will verify and credit your wallet.</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className={LABEL}>Amount ({currencySymbol}) *</label>
+                <input type="number" inputMode="numeric" value={amount} onChange={e => { setAmount(e.target.value); setErr(""); }} placeholder="0" className={INPUT}/>
+              </div>
+              <div>
+                <label className={LABEL}>Payment Method *</label>
+                <select value={method} onChange={e => { setMethod(e.target.value); setErr(""); }} className={SELECT}>
+                  <option value="">Select method</option>
+                  {DEPOSIT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Transaction ID / Payment Reference *</label>
+                <input value={ref} onChange={e => { setRef(e.target.value); setErr(""); }} placeholder="e.g. TXN123456789" className={INPUT}/>
+              </div>
+              <div>
+                <label className={LABEL}>Note (Optional)</label>
+                <input value={note} onChange={e => setNote(e.target.value)} placeholder="Any additional info for admin" className={INPUT}/>
+              </div>
+              {err && <p className="text-red-500 text-sm font-semibold bg-red-50 rounded-xl px-4 py-2.5">⚠️ {err}</p>}
+              <button onClick={validate} className={BTN_PRIMARY}>Review Deposit →</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function txBadge(type: string) {
   if (type === "credit")   return <span className={BADGE_GREEN}>+ Credit</span>;
   if (type === "debit")    return <span className={BADGE_RED}>- Debit</span>;
@@ -167,6 +262,7 @@ export default function Wallet() {
   const withdrawalEnabled = vc?.withdrawalEnabled !== false;
   const qc = useQueryClient();
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showDeposit, setShowDeposit]   = useState(false);
   const [toast, setToast] = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3500); };
 
@@ -258,12 +354,10 @@ export default function Wallet() {
                   🔒 {T("withdrawalsPaused")}
                 </div>
               )}
-              <div className="flex-1 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-xs text-orange-200">{T("vendorShare")}</p>
-                  <p className="text-xl font-extrabold">{vendorKeepPct}%</p>
-                </div>
-              </div>
+              <button onClick={() => setShowDeposit(true)}
+                className="flex-1 h-12 bg-white/20 text-white font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 border border-white/30 hover:bg-white/30">
+                💳 Deposit
+              </button>
             </div>
           </div>
         </div>
@@ -466,6 +560,15 @@ export default function Wallet() {
             qc.invalidateQueries({ queryKey: ["vendor-wallet"] });
             refreshUser();
             showToast(`✅ ${T("withdrawalSubmitted")}`);
+          }}
+        />
+      )}
+      {showDeposit && (
+        <DepositModal
+          onClose={() => setShowDeposit(false)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["vendor-wallet"] });
+            showToast("✅ Deposit request submitted! Admin will verify within 24–48 hours.");
           }}
         />
       )}
