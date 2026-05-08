@@ -9,6 +9,7 @@ export const pharmacyOrdersTable = pgTable("pharmacy_orders", {
   riderId: text("rider_id").references(() => usersTable.id, { onDelete: "set null" }),
   items: json("items").notNull(),
   prescriptionNote: text("prescription_note"),
+  prescriptionPhotoUrl: text("prescription_photo_url"),
   deliveryAddress: text("delivery_address").notNull(),
   contactPhone: text("contact_phone").notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),

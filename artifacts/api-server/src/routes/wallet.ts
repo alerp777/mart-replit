@@ -2,7 +2,7 @@ import { randomInt } from "crypto";
 import { logger } from "../lib/logger.js";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { usersTable, walletTransactionsTable, notificationsTable, adminAccountsTable } from "@workspace/db/schema";
+import { usersTable, walletTransactionsTable, notificationsTable, adminAccountsTable, idempotencyKeysTable } from "@workspace/db/schema";
 import { eq, and, gte, sum, desc, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings, adminAuth } from "./admin.js";
@@ -20,28 +20,53 @@ import { paymentLimiter } from "../middleware/rate-limit.js";
 /* ── IS_PRODUCTION guard — independent of NODE_ENV for simulate-topup hardening ── */
 const IS_PRODUCTION = process.env["IS_PRODUCTION"] === "true" || process.env["NODE_ENV"] === "production";
 
-type IdempotencyEntry =
-  | { state: "in_flight"; ts: number }
-  | { state: "success"; ts: number; statusCode: number; body: unknown }
-  | { state: "failed"; ts: number };
+/* ── DB-backed idempotency helpers ──────────────────────────────────────────
+   Namespaced by route prefix to avoid key collisions across deposit/send/withdraw.
+   - responseData = '{}'                  → in_flight (concurrent duplicate → 409)
+   - responseData = '{"statusCode":…}'    → success (replays original response)
+   - Row absent                           → allow fresh attempt
+   TTL = 10 min, enforced on read.                                           ── */
+const WALLET_IDEM_TTL_MS = 10 * 60 * 1000;
 
-/* In-memory idempotency store shared by deposit, send, and withdraw routes.
-   Namespaced by route prefix to avoid key collisions:
-     deposit:<userId>:<key>
-     send:<userId>:<key>
-     withdraw:<userId>:<key>
-   - "in_flight": concurrent duplicate → 409
-   - "success": replays the original response body and status code
-   - "failed": key is removed so the client can retry with the same key
-   TTL = 10 min; swept every 5 min. */
-const idempotencyCache = new Map<string, IdempotencyEntry>();
-const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of idempotencyCache) {
-    if (now - entry.ts > IDEMPOTENCY_TTL_MS) idempotencyCache.delete(key);
-  }
-}, 5 * 60 * 1000);
+async function walletIdemCheck(userId: string, scopedKey: string): Promise<{ state: "in_flight" } | { state: "success"; statusCode: number; body: unknown } | null> {
+  try {
+    const [row] = await db.select({ responseData: idempotencyKeysTable.responseData, createdAt: idempotencyKeysTable.createdAt })
+      .from(idempotencyKeysTable)
+      .where(and(eq(idempotencyKeysTable.userId, userId), eq(idempotencyKeysTable.idempotencyKey, scopedKey)))
+      .limit(1);
+    if (!row) return null;
+    if (Date.now() - row.createdAt.getTime() > WALLET_IDEM_TTL_MS) {
+      db.delete(idempotencyKeysTable).where(and(eq(idempotencyKeysTable.userId, userId), eq(idempotencyKeysTable.idempotencyKey, scopedKey))).catch(() => {});
+      return null;
+    }
+    if (row.responseData === "{}") return { state: "in_flight" };
+    try {
+      const parsed = JSON.parse(row.responseData);
+      if (parsed.statusCode !== undefined && parsed.body !== undefined) return { state: "success", statusCode: parsed.statusCode, body: parsed.body };
+    } catch { /* fall through */ }
+    return { state: "in_flight" };
+  } catch { return null; }
+}
+
+async function walletIdemSetInflight(userId: string, scopedKey: string): Promise<void> {
+  await db.insert(idempotencyKeysTable)
+    .values({ id: generateId(), userId, idempotencyKey: scopedKey, responseData: "{}" })
+    .onConflictDoNothing()
+    .catch(() => {});
+}
+
+async function walletIdemSetSuccess(userId: string, scopedKey: string, statusCode: number, body: unknown): Promise<void> {
+  await db.update(idempotencyKeysTable)
+    .set({ responseData: JSON.stringify({ statusCode, body }) })
+    .where(and(eq(idempotencyKeysTable.userId, userId), eq(idempotencyKeysTable.idempotencyKey, scopedKey)))
+    .catch(() => {});
+}
+
+async function walletIdemDelete(userId: string, scopedKey: string): Promise<void> {
+  await db.delete(idempotencyKeysTable)
+    .where(and(eq(idempotencyKeysTable.userId, userId), eq(idempotencyKeysTable.idempotencyKey, scopedKey)))
+    .catch(() => {});
+}
 
 /* ── Amount decimal precision validator ─────────────────────────────────────
    Rejects amounts with more than 2 decimal places (e.g. 100.001 → 400).
@@ -271,8 +296,8 @@ router.post("/deposit", customerAuth, async (req, res) => {
     sendValidationError(res, `Payment method '${paymentMethod}' is not currently enabled`); return;
   }
 
-  const cacheKey = `deposit:${userId}:${idempotencyKey}`;
-  const existing = idempotencyCache.get(cacheKey);
+  const depositScopedKey = `deposit:${idempotencyKey}`;
+  const existing = await walletIdemCheck(userId, depositScopedKey);
   if (existing) {
     if (existing.state === "in_flight") {
       sendError(res, "Duplicate request — this deposit is already being processed.", 409);
@@ -282,16 +307,15 @@ router.post("/deposit", customerAuth, async (req, res) => {
       res.status(existing.statusCode).json(existing.body);
       return;
     }
-    /* state === "failed": key already removed below, allow retry with same key */
   }
-  idempotencyCache.set(cacheKey, { state: "in_flight", ts: Date.now() });
+  await walletIdemSetInflight(userId, depositScopedKey);
 
   /* ── Duplicate Transaction ID check ──
      Normalize TxID (trim + uppercase) both on check and on storage
      to prevent bypass via whitespace/casing variations. */
   const normalizedTxId = transactionId.trim().toUpperCase().replace(/\s+/g, "");
   if (!normalizedTxId) {
-    idempotencyCache.delete(cacheKey);
+    await walletIdemDelete(userId, depositScopedKey);
     sendValidationError(res, "transactionId cannot be empty"); return;
   }
 
@@ -307,12 +331,12 @@ router.post("/deposit", customerAuth, async (req, res) => {
       .limit(1);
 
     if (existingDeposit.length > 0) {
-      idempotencyCache.delete(cacheKey);
+      await walletIdemDelete(userId, depositScopedKey);
       sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
       return;
     }
   } catch (e: unknown) {
-    idempotencyCache.delete(cacheKey);
+    await walletIdemDelete(userId, depositScopedKey);
     logger.error("[wallet /deposit] DB error checking duplicate TxID:", e);
     sendError(res, "Something went wrong, please try again.", 500); return;
   }
@@ -323,15 +347,15 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const maxTopup      = parseFloat(s["wallet_max_topup"]   ?? "25000");
   const autoApproveThreshold = Math.max(0, parseFloat(s["wallet_deposit_auto_approve"] ?? "0"));
 
-  if (!walletEnabled) { idempotencyCache.delete(cacheKey); sendError(res, "Wallet service is currently disabled", 503); return; }
-  if (amt < minTopup) { idempotencyCache.delete(cacheKey); sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
-  if (amt > maxTopup) { idempotencyCache.delete(cacheKey); sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
+  if (!walletEnabled) { await walletIdemDelete(userId, depositScopedKey); sendError(res, "Wallet service is currently disabled", 503); return; }
+  if (amt < minTopup) { await walletIdemDelete(userId, depositScopedKey); sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
+  if (amt > maxTopup) { await walletIdemDelete(userId, depositScopedKey); sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
 
   /* ── KYC gating for deposits (admin Setting: wallet_kyc_required) ── */
   if ((s["wallet_kyc_required"] ?? "off") === "on") {
     const [kycRow] = await db.select({ kycStatus: usersTable.kycStatus }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (!kycRow || kycRow.kycStatus !== "verified") {
-      idempotencyCache.delete(cacheKey);
+      await walletIdemDelete(userId, depositScopedKey);
       sendForbidden(res, "kyc_required", "KYC verification is required before you can top up your wallet. Please complete KYC from your profile.");
       return;
     }
@@ -348,10 +372,10 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const shouldAutoApprove = autoApproveThreshold > 0 && amt <= autoApproveThreshold;
 
   const setIdempotencyResult = (statusCode: number, body: unknown) => {
-    idempotencyCache.set(cacheKey, { state: "success", ts: Date.now(), statusCode, body });
+    walletIdemSetSuccess(userId, depositScopedKey, statusCode, body).catch(() => {});
   };
   const setIdempotencyFailed = () => {
-    idempotencyCache.delete(cacheKey);
+    walletIdemDelete(userId, depositScopedKey).catch(() => {});
   };
 
   if (shouldAutoApprove) {
@@ -529,10 +553,10 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
     (req.headers["idempotency-key"] as string | undefined) ??
     (typeof req.body["idempotencyKey"] === "string" ? req.body["idempotencyKey"] : undefined);
 
-  let sendCacheKey: string | null = null;
+  let sendScopedKey: string | null = null;
   if (idempotencyKey) {
-    sendCacheKey = `send:${senderUserId}:${idempotencyKey}`;
-    const existing = idempotencyCache.get(sendCacheKey);
+    sendScopedKey = `send:${idempotencyKey}`;
+    const existing = await walletIdemCheck(senderUserId, sendScopedKey);
     if (existing) {
       if (existing.state === "in_flight") {
         sendError(res, "Duplicate request — this transfer is already being processed.", 409);
@@ -543,7 +567,7 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
         return;
       }
     }
-    idempotencyCache.set(sendCacheKey, { state: "in_flight", ts: Date.now() });
+    await walletIdemSetInflight(senderUserId, sendScopedKey);
   }
 
   const s = await getPlatformSettings();
@@ -555,22 +579,22 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
   const p2pDailyLimit  = parseFloat(s["wallet_p2p_daily_limit"]  ?? "10000");
   const p2pFeePct      = Math.max(0, Math.min(50, parseFloat(s["wallet_p2p_fee_pct"] ?? "0")));
 
-  const clearKey = () => { if (sendCacheKey) idempotencyCache.delete(sendCacheKey); };
+  const clearSendKey = () => { if (sendScopedKey) walletIdemDelete(senderUserId, sendScopedKey).catch(() => {}); };
 
   if (!p2pEnabled) {
-    clearKey();
+    clearSendKey();
     sendForbidden(res, "P2P money transfers are currently disabled by admin."); return;
   }
   if (!walletEnabled) {
-    clearKey();
+    clearSendKey();
     sendError(res, "Wallet service is currently disabled", 503); return;
   }
   if (sendAmt < minWithdrawal) {
-    clearKey();
+    clearSendKey();
     sendValidationError(res, `Minimum transfer is Rs. ${minWithdrawal}`); return;
   }
   if (sendAmt > maxWithdrawal) {
-    clearKey();
+    clearSendKey();
     sendValidationError(res, `Maximum single transfer is Rs. ${maxWithdrawal}`); return;
   }
 
@@ -578,7 +602,7 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
   if ((s["wallet_kyc_required"] ?? "off") === "on") {
     const [kycRow] = await db.select({ kycStatus: usersTable.kycStatus }).from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
     if (!kycRow || kycRow.kycStatus !== "verified") {
-      clearKey();
+      clearSendKey();
       sendForbidden(res, "kyc_required", "KYC verification is required before you can transfer money. Please complete KYC from your profile.");
       return;
     }
@@ -705,10 +729,10 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
 
     const { receiverId: _rid, senderName: _sn, ...responseData } = result;
     addAuditEntry({ action: "wallet_send", ip: getClientIp(req), details: `P2P transfer Rs. ${result.amount}${result.fee > 0 ? ` + fee Rs. ${result.fee}` : ""} to ${result.receiverId}`, result: "success", affectedUserId: senderUserId });
-    if (sendCacheKey) idempotencyCache.set(sendCacheKey, { state: "success", ts: Date.now(), statusCode: 200, body: responseData });
+    if (sendScopedKey) walletIdemSetSuccess(senderUserId, sendScopedKey, 200, responseData).catch(() => {});
     sendSuccess(res, responseData);
   } catch (e: unknown) {
-    if (sendCacheKey) idempotencyCache.delete(sendCacheKey);
+    if (sendScopedKey) walletIdemDelete(senderUserId, sendScopedKey).catch(() => {});
     const err = e as any;
     if (err.walletFrozen === "sender") {
       sendForbidden(res, "wallet_frozen", err.message); return;
@@ -856,10 +880,10 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
     (req.headers["idempotency-key"] as string | undefined) ??
     (typeof req.body["idempotencyKey"] === "string" ? req.body["idempotencyKey"] : undefined);
 
-  let withdrawCacheKey: string | null = null;
+  let withdrawScopedKey: string | null = null;
   if (idempotencyKey) {
-    withdrawCacheKey = `withdraw:${userId}:${idempotencyKey}`;
-    const existing = idempotencyCache.get(withdrawCacheKey);
+    withdrawScopedKey = `withdraw:${idempotencyKey}`;
+    const existing = await walletIdemCheck(userId, withdrawScopedKey);
     if (existing) {
       if (existing.state === "in_flight") {
         sendError(res, "Duplicate request — this withdrawal is already being processed.", 409);
@@ -870,10 +894,10 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
         return;
       }
     }
-    idempotencyCache.set(withdrawCacheKey, { state: "in_flight", ts: Date.now() });
+    await walletIdemSetInflight(userId, withdrawScopedKey);
   }
 
-  const clearKey = () => { if (withdrawCacheKey) idempotencyCache.delete(withdrawCacheKey); };
+  const clearKey = () => { if (withdrawScopedKey) walletIdemDelete(userId, withdrawScopedKey).catch(() => {}); };
 
   let withdrawUser: { blockedServices: string; walletBalance: string } | undefined;
   try {
@@ -977,7 +1001,7 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
   }).catch(e => logger.error("withdrawal notif insert failed:", e));
 
   const responseBody = { txId, status: "pending", amount: amt };
-  if (withdrawCacheKey) idempotencyCache.set(withdrawCacheKey, { state: "success", ts: Date.now(), statusCode: 200, body: responseBody });
+  if (withdrawScopedKey) walletIdemSetSuccess(userId, withdrawScopedKey, 200, responseBody).catch(() => {});
   sendSuccess(res, responseBody);
 });
 

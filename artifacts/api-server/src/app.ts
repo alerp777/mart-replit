@@ -26,6 +26,7 @@ import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-passwor
 import { ensureErrorResolutionTables } from "./routes/error-reports.js";
 import { ensureSecurityTables } from "./services/securityTablesMigration.js";
 import { ensureCartSnapshotTable } from "./services/cartSnapshotMigration.js";
+import { ensurePharmacyPhotoColumn } from "./services/pharmacyPhotoMigration.js";
 import { startHealthMonitor } from "./services/healthAlertMonitor.js";
 import { recordResponseTime } from "./lib/metrics/responseTime.js";
 import router from "./routes/index.js";
@@ -136,6 +137,12 @@ export async function runStartupTasks(): Promise<void> {
   try {
     await ensureCartSnapshotTable();
     console.log("[startup] cart_snapshots table ready");
+  } catch (err) {
+    console.error("[startup] cart_snapshots table migration failed (continuing):", err);
+  }
+  try {
+    await ensurePharmacyPhotoColumn();
+    console.log("[startup] pharmacy prescription_photo_url column ready");
   } catch (err) {
     console.error("[startup] cart_snapshots table migration failed (continuing):", err);
   }

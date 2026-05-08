@@ -18,37 +18,33 @@ const router: IRouter = Router();
 async function resolveAndPersistRxPhoto(orderId: string, refId: string): Promise<string | null> {
   const resolvedUrl = prescriptionRefMap.get(refId);
   if (!resolvedUrl) return null;
-  const currentNote = await db
-    .select({ prescriptionNote: pharmacyOrdersTable.prescriptionNote })
-    .from(pharmacyOrdersTable)
+  await db.update(pharmacyOrdersTable)
+    .set({ prescriptionPhotoUrl: resolvedUrl, updatedAt: new Date() })
     .where(eq(pharmacyOrdersTable.id, orderId))
-    .limit(1);
-  if (currentNote[0]?.prescriptionNote?.includes(refId)) {
-    const updatedNote = currentNote[0].prescriptionNote.replace(refId, resolvedUrl);
-    await db.update(pharmacyOrdersTable)
-      .set({ prescriptionNote: updatedNote, updatedAt: new Date() })
-      .where(eq(pharmacyOrdersTable.id, orderId));
-  }
+    .catch(() => {});
   return resolvedUrl;
 }
 
 function mapOrder(o: typeof pharmacyOrdersTable.$inferSelect, resolvedPhotoOverride?: string | null) {
   let noteText = o.prescriptionNote ?? null;
-  let prescriptionPhotoUrl: string | null = null;
-  if (noteText) {
+  let prescriptionPhotoUrl: string | null = resolvedPhotoOverride ?? o.prescriptionPhotoUrl ?? null;
+
+  if (!prescriptionPhotoUrl && noteText) {
     const photoMatch = noteText.match(/\[photo:\s*([^\]]+)\]/);
     if (photoMatch) {
       const raw = photoMatch[1]!.trim();
-      if (resolvedPhotoOverride) {
-        prescriptionPhotoUrl = resolvedPhotoOverride;
-      } else if (raw.startsWith("rx-")) {
+      if (raw.startsWith("rx-")) {
         prescriptionPhotoUrl = prescriptionRefMap.get(raw) ?? null;
       } else {
         prescriptionPhotoUrl = raw;
       }
-      noteText = noteText.replace(/\n?\[photo:\s*[^\]]+\]/, "").trim() || null;
     }
   }
+
+  if (noteText) {
+    noteText = noteText.replace(/\n?\[photo:\s*[^\]]+\]/, "").trim() || null;
+  }
+
   return {
     id: o.id,
     userId: o.userId,
@@ -377,6 +373,7 @@ router.post("/", customerAuth, async (req, res) => {
         const [newOrder] = await tx.insert(pharmacyOrdersTable).values({
           id: generateId(), userId, items,
           prescriptionNote: mergedPrescriptionNote,
+          prescriptionPhotoUrl: resolvedPhotoUrl,
           deliveryAddress, contactPhone,
           total: total.toFixed(2), paymentMethod,
           status: "pending", estimatedTime,
@@ -408,6 +405,7 @@ router.post("/", customerAuth, async (req, res) => {
   const [order] = await db.insert(pharmacyOrdersTable).values({
     id: generateId(), userId, items,
     prescriptionNote: mergedPrescriptionNote,
+    prescriptionPhotoUrl: resolvedPhotoUrl,
     deliveryAddress, contactPhone,
     total: total.toFixed(2), paymentMethod,
     status: "pending", estimatedTime,

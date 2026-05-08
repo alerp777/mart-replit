@@ -5,8 +5,12 @@ import { eq, and, desc, sql, ilike, inArray, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 import { sendSuccess, sendNotFound, sendValidationError, sendInternalError } from "../lib/response.js";
+import { redisClient } from "../lib/redis.js";
 
 const router: IRouter = Router();
+
+const REC_CACHE_TTL_SECS = 60;
+const TRACK_DEDUP_TTL_SECS = 5;
 
 router.post("/track", customerAuth, async (req, res) => {
   const userId = req.customerId!;
@@ -20,6 +24,17 @@ router.post("/track", customerAuth, async (req, res) => {
     res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
     return;
   }
+
+  /* ── Dedup: skip duplicate track events within 5 seconds (Redis NX) ── */
+  if (redisClient) {
+    const dedupKey = `rec:track:${userId}:${productId}:${type}`;
+    const isNew = await redisClient.set(dedupKey, "1", "EX", TRACK_DEDUP_TTL_SECS, "NX").catch(() => null);
+    if (!isNew) {
+      res.json({ success: true, deduped: true });
+      return;
+    }
+  }
+
   const weightMap: Record<string, number> = { view: 1, add_to_cart: 3, wishlist: 2, purchase: 5 };
   await db.insert(userInteractionsTable).values({
     id: generateId(),
@@ -34,6 +49,19 @@ router.post("/track", customerAuth, async (req, res) => {
 router.get("/for-you", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const limit = Math.min(20, parseInt(String(req.query["limit"] || "10")));
+
+  /* ── Redis cache check ── */
+  const cacheKey = `rec:for-you:${userId}:${limit}`;
+  if (redisClient) {
+    const cached = await redisClient.get(cacheKey).catch(() => null);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        res.json(parsed);
+        return;
+      } catch { /* cache miss — fall through */ }
+    }
+  }
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
@@ -108,7 +136,14 @@ router.get("/for-you", customerAuth, async (req, res) => {
     recommendations.push(...trendingFiltered);
   }
 
-  res.json({ recommendations, total: recommendations.length });
+  const result = { recommendations, total: recommendations.length };
+
+  /* ── Cache result in Redis for 60 seconds ── */
+  if (redisClient) {
+    redisClient.set(cacheKey, JSON.stringify(result), "EX", REC_CACHE_TTL_SECS).catch(() => {});
+  }
+
+  res.json(result);
 });
 
 router.get("/trending", async (req, res) => {

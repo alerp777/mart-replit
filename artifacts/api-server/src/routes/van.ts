@@ -5,7 +5,7 @@ import { db } from "@workspace/db";
 import {
   vanRoutesTable, vanVehiclesTable, vanSchedulesTable, vanBookingsTable,
   vanDriversTable, usersTable, notificationsTable, walletTransactionsTable,
-  accountConditionsTable,
+  accountConditionsTable, liveLocationsTable,
 } from "@workspace/db/schema";
 import { generateId } from "../lib/id.js";
 import type { Request, Response, NextFunction } from "express";
@@ -817,9 +817,23 @@ router.post("/driver/location", vanDriverAuth, async (req, res) => {
       sendError(res, "Trip is not in progress.", 400); return;
     }
 
+    const now = new Date();
     emitVanLocation(scheduleId, date, {
-      latitude, longitude, speed, heading, updatedAt: new Date().toISOString(),
+      latitude, longitude, speed, heading, updatedAt: now.toISOString(),
     });
+
+    db.insert(liveLocationsTable).values({
+      userId: driverId,
+      latitude: String(latitude),
+      longitude: String(longitude),
+      role: "van_driver",
+      lastSeen: now,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: liveLocationsTable.userId,
+      set: { latitude: String(latitude), longitude: String(longitude), lastSeen: now, updatedAt: now },
+    }).catch(e => logger.warn({ err: (e as Error).message }, "[van/location] live_locations upsert failed"));
+
     sendSuccess(res, { ok: true });
   } catch (e) {
     sendError(res, "Failed to broadcast location.", 500);

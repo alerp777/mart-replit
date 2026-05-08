@@ -1,10 +1,10 @@
 import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger.js";
 import { db } from "@workspace/db";
-import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, productVariantsTable, liveLocationsTable, notificationsTable, offersTable, offerRedemptionsTable, idempotencyKeysTable, parcelBookingsTable, ridesTable, pharmacyOrdersTable } from "@workspace/db/schema";
+import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, productVariantsTable, liveLocationsTable, notificationsTable, offersTable, offerRedemptionsTable, idempotencyKeysTable, parcelBookingsTable, ridesTable, pharmacyOrdersTable, orderAuditLogTable } from "@workspace/db/schema";
 import { eq, and, gte, count, sum, desc, SQL, sql, inArray, ilike } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
-import { getPlatformSettings } from "./admin.js";
+import { getPlatformSettings, adminAuth } from "./admin.js";
 import { addSecurityEvent, addAuditEntry, getClientIp, getCachedSettings, customerAuth, idorGuard } from "../middleware/security.js";
 import { verifyOwnership } from "../middleware/verifyOwnership.js";
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
@@ -56,6 +56,67 @@ setInterval(async () => {
     );
   } catch (e) {
     logger.warn({ err: (e as Error).message }, "[idempotency] cleanup of expired keys failed");
+  }
+}, 5 * 60_000);
+
+/* ── Auto-cancel stale pending orders ─────────────────────────────────────
+   Runs every 5 minutes. Cancels orders that have been pending longer than
+   the configured `order_auto_cancel_min` setting (default: 30 min).
+   Refunds wallet-paid orders automatically.                              ── */
+setInterval(async () => {
+  try {
+    const s = await getCachedSettings();
+    const autoCancelMin = parseInt(s["order_auto_cancel_min"] ?? "30", 10);
+    if (autoCancelMin <= 0) return;
+    const cutoff = new Date(Date.now() - autoCancelMin * 60_000);
+
+    const stale = await db.select({ id: ordersTable.id, userId: ordersTable.userId, total: ordersTable.total, paymentMethod: ordersTable.paymentMethod, vendorId: ordersTable.vendorId })
+      .from(ordersTable)
+      .where(and(
+        eq(ordersTable.status, "pending"),
+        sql`${ordersTable.createdAt} < ${cutoff}`,
+      ));
+
+    for (const order of stale) {
+      try {
+        await db.transaction(async (tx) => {
+          const [cancelled] = await tx.update(ordersTable)
+            .set({ status: "cancelled", updatedAt: new Date() })
+            .where(and(eq(ordersTable.id, order.id), eq(ordersTable.status, "pending")))
+            .returning();
+          if (!cancelled) return;
+
+          if (order.paymentMethod === "wallet") {
+            const refundAmt = parseFloat(order.total);
+            if (refundAmt > 0) {
+              await tx.update(usersTable)
+                .set({ walletBalance: sql`wallet_balance + ${refundAmt.toFixed(2)}` })
+                .where(eq(usersTable.id, order.userId));
+              await tx.insert(walletTransactionsTable).values({
+                id: generateId(), userId: order.userId, type: "credit",
+                amount: refundAmt.toFixed(2),
+                description: `Auto-refund: order #${order.id.slice(-6).toUpperCase()} expired`,
+                reference: `refund:${order.id}`,
+              });
+            }
+          }
+
+          await tx.insert(orderAuditLogTable).values({
+            id: generateId(),
+            orderId: order.id,
+            vendorId: order.vendorId ?? order.userId,
+            fromStatus: "pending",
+            toStatus: "cancelled",
+            note: `Auto-cancelled after ${autoCancelMin} minutes`,
+          });
+        });
+        logger.info({ orderId: order.id }, "[auto-cancel] stale pending order cancelled");
+      } catch (e) {
+        logger.warn({ orderId: order.id, err: (e as Error).message }, "[auto-cancel] failed for order");
+      }
+    }
+  } catch (e) {
+    logger.warn({ err: (e as Error).message }, "[auto-cancel] interval error");
   }
 }, 5 * 60_000);
 
@@ -1461,6 +1522,110 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   } catch (e: unknown) {
     logger.error({ err: e, userId, orderId: String(req.params["id"]) }, "[orders/cancel] cancellation transaction failed");
     sendValidationError(res, "Could not cancel order. Please try again.");
+  }
+});
+
+/* ── GET /orders/:id/timeline — audit log for an order ─────────────────── */
+router.get("/:id/timeline", customerAuth, async (req, res) => {
+  const orderId = String(req.params["id"]);
+  const userId = req.customerId!;
+
+  const [order] = await db.select({ userId: ordersTable.userId })
+    .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+  if (!order) { sendNotFound(res, "Order not found"); return; }
+  if (idorGuard(res, order.userId, userId)) return;
+
+  try {
+    const entries = await db.select()
+      .from(orderAuditLogTable)
+      .where(eq(orderAuditLogTable.orderId, orderId))
+      .orderBy(orderAuditLogTable.changedAt);
+
+    sendSuccess(res, {
+      orderId,
+      timeline: entries.map(e => ({
+        id: e.id,
+        fromStatus: e.fromStatus,
+        toStatus: e.toStatus,
+        note: e.note ?? null,
+        changedAt: e.changedAt.toISOString(),
+      })),
+    });
+  } catch (e) {
+    logger.error({ err: e, orderId }, "[orders/timeline] failed");
+    sendError(res, "Failed to fetch order timeline", 500);
+  }
+});
+
+/* ── POST /orders/:id/refund — admin: issue a refund ───────────────────── */
+router.post("/:id/refund", adminAuth, async (req, res) => {
+  const orderId = String(req.params["id"]);
+  const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 200) : null;
+
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+  if (!order) { sendNotFound(res, "Order not found"); return; }
+
+  if (order.refundedAt) {
+    sendValidationError(res, "This order has already been refunded"); return;
+  }
+  if (!["cancelled", "delivered", "completed"].includes(order.status)) {
+    sendValidationError(res, "Refund can only be issued for cancelled, delivered, or completed orders"); return;
+  }
+
+  const refundAmount = parseFloat(String(order.total));
+  const isWalletOrOnline = ["wallet", "jazzcash", "easypaisa", "bank"].includes(order.paymentMethod);
+
+  try {
+    await db.transaction(async (tx) => {
+      const [updated] = await tx.update(ordersTable)
+        .set({
+          status: "refunded",
+          paymentStatus: "refunded",
+          refundedAt: new Date(),
+          refundedAmount: order.total,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(ordersTable.id, orderId), sql`${ordersTable.refundedAt} IS NULL`))
+        .returning();
+
+      if (!updated) throw new Error("Order already refunded or not found");
+
+      if (isWalletOrOnline && refundAmount > 0) {
+        await tx.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance + ${refundAmount.toFixed(2)}` })
+          .where(eq(usersTable.id, order.userId));
+        await tx.insert(walletTransactionsTable).values({
+          id: generateId(), userId: order.userId, type: "credit",
+          amount: refundAmount.toFixed(2),
+          description: `Refund for order #${orderId.slice(-6).toUpperCase()}${note ? ` — ${note}` : ""}`,
+          reference: `refund:${orderId}`,
+        });
+      }
+
+      await tx.insert(orderAuditLogTable).values({
+        id: generateId(),
+        orderId,
+        vendorId: order.vendorId ?? order.userId,
+        fromStatus: order.status,
+        toStatus: "refunded",
+        note: note ?? "Admin-issued refund",
+      });
+    });
+
+    if (isWalletOrOnline && refundAmount > 0) {
+      const [updatedUser] = await db.select({ walletBalance: usersTable.walletBalance })
+        .from(usersTable).where(eq(usersTable.id, order.userId)).limit(1);
+      if (updatedUser) broadcastWalletUpdate(order.userId, parseFloat(updatedUser.walletBalance ?? "0"));
+    }
+
+    sendSuccess(res, { orderId, refundAmount, refundMethod: isWalletOrOnline ? "wallet" : "manual", note });
+  } catch (e: unknown) {
+    const msg = (e as Error).message ?? "";
+    if (msg.includes("already refunded")) {
+      sendValidationError(res, msg); return;
+    }
+    logger.error({ err: e, orderId }, "[orders/refund] failed");
+    sendError(res, "Failed to process refund", 500);
   }
 });
 
