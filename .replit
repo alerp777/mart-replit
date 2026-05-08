@@ -132,3 +132,70 @@ DEV_SEED_KEY = "local-dev-seed-ajkmart"
 
 [rules.formatter.fileExtensions.".ts"]
 id = "module:nodejs-24/languageServer:typescript-language-server"
+
+[[ports]]
+localPort = 3000
+
+[[ports]]
+localPort = 3001
+externalPort = 6000
+
+[[ports]]
+localPort = 3002
+externalPort = 3002
+
+[[ports]]
+localPort = 3003
+externalPort = 5000
+
+[[ports]]
+localPort = 3004
+externalPort = 3001
+
+[[ports]]
+localPort = 3005
+externalPort = 5173
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 8082
+externalPort = 8000
+
+[[ports]]
+localPort = 8083
+externalPort = 8099
+
+[[ports]]
+localPort = 19006
+externalPort = 8080
+
+[[ports]]
+localPort = 20716
+externalPort = 8008
+
+[[ports]]
+localPort = 21463
+externalPort = 3002
+
+[[ports]]
+localPort = 21464
+externalPort = 4200
+
+[[ports]]
+localPort = 22969
+externalPort = 3003
+
+[[ports]]
+localPort = 22970
+externalPort = 6800
+
+[[ports]]
+localPort = 23744
+externalPort = 3000
+
+[[ports]]
+localPort = 23745
+externalPort = 9000
