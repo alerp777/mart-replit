@@ -30,6 +30,7 @@ const PRODUCT_QUEUE_KEY = "ajkmart_vendor_product_queue";
 const PRODUCT_FAILURES_KEY = "ajkmart_vendor_product_failures";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 800;
+const ENTRY_SIZE_WARN_BYTES = 50 * 1024;
 
 function loadQueue(): QueuedStatusUpdate[] {
   try {
@@ -55,10 +56,23 @@ function loadProductQueue(): QueuedProductAction[] {
   }
 }
 
-function saveProductQueue(q: QueuedProductAction[]): void {
+/**
+ * Persist the product queue. Returns an error message string if the save
+ * failed (QuotaExceededError or other), or null on success.
+ */
+function saveProductQueue(q: QueuedProductAction[]): string | null {
   try {
     localStorage.setItem(PRODUCT_QUEUE_KEY, JSON.stringify(q));
-  } catch {}
+    return null;
+  } catch (e) {
+    if (
+      e instanceof DOMException &&
+      (e.name === "QuotaExceededError" || e.name === "NS_ERROR_DOM_QUOTA_REACHED")
+    ) {
+      return "Storage is full — this product change could not be saved offline. Free up space or sync existing changes first.";
+    }
+    return "Could not save product change offline — storage error.";
+  }
 }
 
 function loadProductFailures(): ProductQueueError[] {
@@ -74,6 +88,24 @@ function saveProductFailures(f: ProductQueueError[]): void {
   try {
     localStorage.setItem(PRODUCT_FAILURES_KEY, JSON.stringify(f));
   } catch {}
+}
+
+/**
+ * Strip embedded base64 image data from a product payload before queueing.
+ * Any field whose value is a data: URI is replaced with an empty string so
+ * the vendor knows to re-upload the image after reconnecting. Plain https://
+ * URLs are kept as-is.
+ */
+function sanitizePayloadForStorage(payload: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === "string" && value.startsWith("data:")) {
+      sanitized[key] = "";
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
 }
 
 function sleep(ms: number) {
@@ -128,7 +160,6 @@ export function useOfflineQueue() {
     if (queue.length === 0) return;
     flushingProductsRef.current = true;
 
-    const stillPending: QueuedProductAction[] = [];
     const newFailures: ProductQueueError[] = [];
 
     for (const item of queue) {
@@ -162,7 +193,7 @@ export function useOfflineQueue() {
       }
     }
 
-    saveProductQueue(stillPending);
+    saveProductQueue([]);
     setPendingProductCount(0);
 
     const existingFailures = loadProductFailures();
@@ -219,25 +250,52 @@ export function useOfflineQueue() {
     return true;
   }, [isOnline]);
 
+  /**
+   * Enqueue a product create/update for offline replay.
+   *
+   * Returns null on success, or an error message string when the item
+   * could not be persisted (storage full, oversized payload, etc.).
+   * The caller is responsible for surfacing the error to the vendor.
+   */
   const enqueueProductAction = useCallback((
     action: "create" | "update",
     payload: Record<string, unknown>,
     productId?: string,
-  ): boolean => {
-    if (isOnline) return false;
-    const queue = loadProductQueue();
+  ): string | null => {
+    if (isOnline) return null;
+
+    const sanitizedPayload = sanitizePayloadForStorage(payload);
+
     const item: QueuedProductAction = {
       id: `product_${action}_${Date.now()}`,
       action,
       productId,
-      payload,
+      payload: sanitizedPayload,
       queuedAt: Date.now(),
       retries: 0,
     };
+
+    const serialized = JSON.stringify(item);
+    const byteSize = new TextEncoder().encode(serialized).length;
+
+    if (byteSize > ENTRY_SIZE_WARN_BYTES) {
+      console.warn(
+        `[offlineQueue] Product queue entry is ${Math.round(byteSize / 1024)} KB — ` +
+        "larger than the recommended 50 KB limit. Base64 image data has been stripped; " +
+        "the image will need to be re-uploaded after reconnecting."
+      );
+    }
+
+    const queue = loadProductQueue();
     queue.push(item);
-    saveProductQueue(queue);
+    const saveError = saveProductQueue(queue);
+
+    if (saveError) {
+      return saveError;
+    }
+
     setPendingProductCount(queue.length);
-    return true;
+    return null;
   }, [isOnline]);
 
   return {
