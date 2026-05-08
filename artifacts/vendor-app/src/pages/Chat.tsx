@@ -3,6 +3,7 @@ import { useAuth } from "../lib/auth";
 import { apiFetch, api } from "../lib/api";
 import { io, type Socket } from "socket.io-client";
 import { SafeImage } from "../components/ui/SafeImage";
+import { getTurnIceServers } from "../lib/turnIceServers";
 
 interface OtherUser { id: string; name: string | null; ajkId: string | null; roles?: string | null; }
 interface Conversation { id: string; otherUser: OtherUser; lastMessage: { content: string } | null; unreadCount: number; lastMessageAt: string | null; }
@@ -302,6 +303,11 @@ export default function Chat() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [quickReplies, setQuickReplies] = useState<string[]>(loadLocalShortcuts() ?? DEFAULT_SHORTCUTS);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [recordingVoice, setRecordingVoice] = useState(false);
+  const [voiceRecordSecs, setVoiceRecordSecs] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceChunksRef = useRef<BlobPart[]>([]);
+  const voiceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const showError = (msg: string) => { setErrorToast(msg); setTimeout(() => setErrorToast(null), 4000); };
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -439,6 +445,65 @@ export default function Chat() {
     loadRequests();
   };
 
+  const startVoiceRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      voiceChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) voiceChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (!selectedConv) return;
+        const blob = new Blob(voiceChunksRef.current, { type: mimeType });
+        const file = new File([blob], `voice_${Date.now()}.${mimeType === "audio/webm" ? "webm" : "ogg"}`, { type: mimeType });
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          const result = await apiFetch("/uploads/audio", { method: "POST", body: formData });
+          const voiceUrl: string = result.url || "";
+          await apiFetch(`/communication/conversations/${selectedConv.id}/messages`, {
+            method: "POST",
+            body: JSON.stringify({ content: voiceUrl, messageType: "voice_note", voiceNoteUrl: voiceUrl }),
+          });
+          const msgs = await apiFetch(`/communication/conversations/${selectedConv.id}/messages`);
+          setMessages(msgs.messages || msgs || []);
+        } catch (err) {
+          showError(err instanceof Error ? err.message : "Voice note upload failed. Please try again.");
+        }
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setVoiceRecordSecs(0);
+      setRecordingVoice(true);
+      voiceTimerRef.current = setInterval(() => setVoiceRecordSecs(s => s + 1), 1000);
+    } catch (err) {
+      const isPermission = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError");
+      showError(isPermission ? "Microphone access denied. Please allow microphone access." : "Could not start recording.");
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
+    setRecordingVoice(false);
+    setVoiceRecordSecs(0);
+  };
+
+  const cancelVoiceRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+    if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
+    voiceChunksRef.current = [];
+    setRecordingVoice(false);
+    setVoiceRecordSecs(0);
+  };
+
   const translateMsg = async (text: string, lang: string) => {
     const result = await apiFetch("/communication/translate", { method: "POST", body: JSON.stringify({ text, targetLang: lang }) });
     return result.translated;
@@ -455,7 +520,8 @@ export default function Chat() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       localStreamRef.current = stream;
 
-      const pc = new RTCPeerConnection({ iceServers: data.iceServers });
+      const apiIceServers: RTCIceServer[] = data.iceServers?.length ? data.iceServers : [{ urls: "stun:stun.l.google.com:19302" }];
+      const pc = new RTCPeerConnection({ iceServers: [...apiIceServers, ...getTurnIceServers()] });
       pcRef.current = pc;
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
@@ -491,7 +557,7 @@ export default function Chat() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     localStreamRef.current = stream;
 
-    const iceServers = answerData.iceServers || [{ urls: "stun:stun.l.google.com:19302" }];
+    const iceServers = [...(answerData.iceServers || [{ urls: "stun:stun.l.google.com:19302" }]), ...getTurnIceServers()];
     const pc = new RTCPeerConnection({ iceServers });
     pcRef.current = pc;
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
@@ -626,7 +692,9 @@ export default function Chat() {
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                       {msg.senderId === user?.id && (
-                        <span className="text-[10px]">{msg.deliveryStatus === "read" ? "✓✓" : msg.deliveryStatus === "delivered" ? "✓✓" : "✓"}</span>
+                        <span className={`text-[10px] font-bold ${msg.deliveryStatus === "read" ? "text-blue-200" : "text-orange-300"}`}>
+                          {msg.deliveryStatus === "read" ? "✓✓" : "✓"}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -756,19 +824,40 @@ export default function Chat() {
             </button>
           </div>
           <div className="flex gap-2 px-4 pb-4 pt-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingFile}
-              title="Attach image or file"
-              className="h-12 w-12 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition flex-shrink-0 disabled:opacity-50"
-            >
-              {uploadingFile ? (
-                <span className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"/>
-              ) : (
-                <span className="text-xl">📎</span>
-              )}
-            </button>
+            {recordingVoice ? (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 rounded-xl px-3 h-12">
+                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"/>
+                  <span className="text-xs font-bold text-red-600">{Math.floor(voiceRecordSecs/60)}:{String(voiceRecordSecs%60).padStart(2,"0")}</span>
+                </div>
+                <button onClick={cancelVoiceRecording} title="Cancel" className="h-12 w-12 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center text-lg flex-shrink-0">✕</button>
+                <button onClick={stopVoiceRecording} title="Send voice note" className="h-12 w-12 rounded-xl bg-orange-500 text-white flex items-center justify-center text-lg flex-shrink-0">✔</button>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingFile}
+                  title="Attach image or file"
+                  className="h-12 w-12 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition flex-shrink-0 disabled:opacity-50"
+                >
+                  {uploadingFile ? (
+                    <span className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"/>
+                  ) : (
+                    <span className="text-xl">📎</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={startVoiceRecording}
+                  title="Record voice note"
+                  className="h-12 w-12 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition flex-shrink-0"
+                >
+                  <span className="text-xl">🎤</span>
+                </button>
+              </>
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -800,8 +889,12 @@ export default function Chat() {
                 }
               }}
             />
-            <input value={input} onChange={e => { setInput(e.target.value); socketRef.current?.emit("comm:typing:start", { conversationId: selectedConv.id, userId: user?.id }); }} onBlur={() => socketRef.current?.emit("comm:typing:stop", { conversationId: selectedConv.id, userId: user?.id })} placeholder="Type a message..." className="flex-1 h-12 px-4 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
-            <button onClick={sendMessage} disabled={sending || !input.trim()} className="h-12 px-6 bg-orange-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">Send</button>
+            {!recordingVoice && (
+              <>
+                <input value={input} onChange={e => { setInput(e.target.value); socketRef.current?.emit("comm:typing:start", { conversationId: selectedConv.id, userId: user?.id }); }} onBlur={() => socketRef.current?.emit("comm:typing:stop", { conversationId: selectedConv.id, userId: user?.id })} placeholder="Type a message..." className="flex-1 h-12 px-4 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
+                <button onClick={sendMessage} disabled={sending || !input.trim()} className="h-12 px-6 bg-orange-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">Send</button>
+              </>
+            )}
           </div>
         </div>
       )}

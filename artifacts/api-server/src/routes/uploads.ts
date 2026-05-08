@@ -394,6 +394,49 @@ router.post(
   },
 );
 
+/* ── POST /uploads/audio — multipart audio upload (authenticated users) ── */
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+const ALLOWED_AUDIO_TYPES = ["audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/aac"];
+
+router.post(
+  "/audio",
+  requireRole("vendor", { vendorApprovalCheck: true }),
+  (req, res, next) => {
+    audioUpload.single("file")(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") { sendValidationError(res, "Audio too large. Maximum 20MB allowed"); return; }
+        sendValidationError(res, err.message);
+        return;
+      }
+      if (err) { sendValidationError(res, err instanceof Error ? err.message : "Upload failed"); return; }
+      next();
+    });
+  },
+  async (req, res) => {
+    try {
+      if (!req.file) { sendValidationError(res, "No audio file uploaded"); return; }
+      const { mimetype, buffer, originalname } = req.file;
+      const baseType = mimetype.split(";")[0]!.trim();
+      if (!ALLOWED_AUDIO_TYPES.includes(baseType)) {
+        sendValidationError(res, "Only webm, ogg, mp3, mp4, wav, and aac audio files are allowed");
+        return;
+      }
+      const ext = baseType === "audio/mpeg" ? ".mp3" : baseType === "audio/ogg" ? ".ogg" : baseType === "audio/wav" ? ".wav" : baseType === "audio/aac" ? ".aac" : baseType === "audio/mp4" ? ".m4a" : ".webm";
+      const uniqueName = `audio_${Date.now()}_${randomUUID().slice(0, 8)}${ext}`;
+      await ensureDir();
+      await writeFile(path.join(UPLOADS_DIR, uniqueName), buffer);
+      const url = `/api/uploads/${uniqueName}`;
+      sendCreated(res, { url, filename: originalname || path.basename(url), size: buffer.length });
+    } catch (e: unknown) {
+      sendError(res, e instanceof Error ? e.message : "Audio upload failed");
+    }
+  },
+);
+
 export { prescriptionRefMap };
 
 export default router;

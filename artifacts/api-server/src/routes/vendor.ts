@@ -796,6 +796,40 @@ router.post("/wallet/withdraw", async (req, res) => {
   }
 });
 
+/* ── POST /vendor/wallet/deposit ── Deposit Request (manual payment verification) ── */
+router.post("/wallet/deposit", async (req, res) => {
+  const vendorId = req.vendorId!;
+  const { amount, paymentMethod, paymentReference, note } = req.body;
+  const amt = safeNum(amount);
+
+  if (!amt || amt <= 0) { sendValidationError(res, "Valid amount required"); return; }
+  if (amt > 100000) { sendValidationError(res, "Maximum single deposit is Rs. 100,000"); return; }
+  if (!paymentMethod || typeof paymentMethod !== "string") { sendValidationError(res, "Payment method is required"); return; }
+  if (!paymentReference || typeof paymentReference !== "string" || !paymentReference.trim()) {
+    sendValidationError(res, "Payment reference / transaction ID is required"); return;
+  }
+
+  try {
+    await db.insert(walletTransactionsTable).values({
+      id: generateId(), userId: vendorId, type: "credit",
+      amount: "0.00",
+      description: `Deposit request pending admin verification — ${paymentMethod} · Ref: ${paymentReference.trim()}${note ? ` · Note: ${note}` : ""}`,
+    });
+
+    const dpLang = await getUserLanguage(vendorId);
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: vendorId,
+      title: "Deposit Request Submitted",
+      body: `Your deposit of Rs. ${amt.toFixed(0)} via ${paymentMethod} is pending admin verification.`,
+      type: "wallet", icon: "wallet-outline",
+    }).catch((e: Error) => logger.warn({ vendorId, err: e.message }, "[vendor/deposit] deposit notification insert failed"));
+
+    sendSuccess(res, { amount: amt, paymentMethod, paymentReference: paymentReference.trim(), message: "Deposit request submitted successfully. Admin will verify and credit your wallet within 24–48 hours." });
+  } catch (e: unknown) {
+    sendValidationError(res, (e as Error).message);
+  }
+});
+
 /* ── GET /vendor/notifications ── */
 router.get("/notifications", async (req, res) => {
   const vendorId = req.vendorId!;

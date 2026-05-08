@@ -10,6 +10,7 @@ import { PullToRefresh } from "../components/PullToRefresh";
 import { ImageUploader } from "../components/ImageUploader";
 import { SafeImage } from "../components/ui/SafeImage";
 import { fc, fd, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
+import { useOfflineQueue } from "../hooks/useOfflineQueue";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart", videoUrl:"", tags:"", isHidden: false };
 const EMPTY_ROW = { name:"", price:"", description:"", image:"", category:"", unit:"", stock:"", type:"mart" };
@@ -68,6 +69,7 @@ function StockHistoryPanel({ productId }: { productId: string }) {
 
 export default function Products() {
   const qc = useQueryClient();
+  const { isOnline, pendingProductCount, productQueueErrors, enqueueProductAction, retryProductQueueItem, dismissProductQueueError } = useOfflineQueue();
   const { config } = usePlatformConfig();
   const { symbol: currencySymbol, code: currencyCode } = useCurrency();
   const { language } = useLanguage();
@@ -190,17 +192,43 @@ export default function Products() {
 
   const createMut = useMutation({
     mutationFn: () => {
+      if (!isOnline) {
+        const payload = { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined, videoUrl: form.videoUrl || undefined, tags: tagsFromForm(form.tags), isHidden: form.isHidden };
+        const storageMsg = enqueueProductAction("create", payload as Record<string, unknown>);
+        if (storageMsg && !storageMsg.startsWith("warn:")) { showToast("❌ " + storageMsg); return Promise.resolve(null); }
+        setShowAdd(false);
+        setForm({ ...EMPTY });
+        showToast(storageMsg ? storageMsg.slice(5) : "📥 Saved offline — will sync when connected");
+        return Promise.resolve(null);
+      }
       if (totalProductCount === null) throw new Error("Cannot verify product count — please wait and try again.");
       if (totalProductCount >= maxItems) throw new Error(`Product limit of ${maxItems} reached. Delete existing products to add new ones.`);
       return api.createProduct({ ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined, videoUrl: form.videoUrl || undefined, tags: tagsFromForm(form.tags), isHidden: form.isHidden });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setShowAdd(false); setForm({ ...EMPTY }); showToast("✅ Product added!"); },
+    onSuccess: (result) => {
+      if (result === null) return;
+      qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setShowAdd(false); setForm({ ...EMPTY }); showToast("✅ Product added!");
+    },
     onError: (e: Error) => showToast("❌ " + errMsg(e)),
   });
 
   const updateMut = useMutation({
-    mutationFn: () => api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setEditProd(null); setShowAdd(false); showToast("✅ Updated!"); },
+    mutationFn: () => {
+      if (!isOnline) {
+        const payload = { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden };
+        const storageMsg = enqueueProductAction("update", payload as Record<string, unknown>, editProd.id);
+        if (storageMsg && !storageMsg.startsWith("warn:")) { showToast("❌ " + storageMsg); return Promise.resolve(null); }
+        setEditProd(null);
+        setShowAdd(false);
+        showToast(storageMsg ? storageMsg.slice(5) : "📥 Saved offline — will sync when connected");
+        return Promise.resolve(null);
+      }
+      return api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden });
+    },
+    onSuccess: (result) => {
+      if (result === null) return;
+      qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setEditProd(null); setShowAdd(false); showToast("✅ Updated!");
+    },
     onError: (e: Error) => showToast("❌ " + errMsg(e)),
   });
 
@@ -259,6 +287,45 @@ export default function Products() {
     if (parsed.length > 0) { setBulkRows(r => [...r, ...parsed]); setShowPaste(false); setPasteText(""); showToast(`✅ Parsed ${parsed.length} rows${rowErrors.length ? ` (${rowErrors.length} skipped)` : ""}`); }
     else showToast("❌ No valid rows found — check format");
   };
+
+  const [bulkImportResults, setBulkImportResults] = useState<Array<{ name: string; status: "pending" | "success" | "error"; message?: string }> | null>(null);
+  const [bulkImporting, setBulkImporting] = useState(false);
+
+  const runBulkImport = useCallback(async () => {
+    const valid = bulkRows.filter(r => r.name.trim() && r.price && !Number.isNaN(Number(r.price)));
+    if (totalProductCount === null) { showToast("Cannot verify product count — please wait and try again."); return; }
+    if (totalProductCount + valid.length > maxItems) { showToast(`Product limit reached. You can add at most ${maxItems - totalProductCount} more product(s).`); return; }
+    if (valid.length === 0) return;
+    const initial: Array<{ name: string; status: "pending" | "success" | "error"; message?: string }> = valid.map(r => ({ name: r.name.trim(), status: "pending" }));
+    setBulkImportResults(initial);
+    setBulkImporting(true);
+    let successCount = 0;
+    const results: Array<{ name: string; status: "pending" | "success" | "error"; message?: string }> = [...initial];
+    for (let i = 0; i < valid.length; i++) {
+      const r = valid[i]!;
+      try {
+        await api.createProduct({
+          name:        r.name.trim(),
+          price:       Number(r.price),
+          description: r.description.trim() || null,
+          image:       r.image.trim() || null,
+          category:    r.category.trim() || bulkCat || "general",
+          unit:        r.unit.trim() || null,
+          stock:       r.stock ? Number(r.stock) : null,
+          type:        r.type || "mart",
+        });
+        results[i] = { ...results[i]!, status: "success" };
+        successCount++;
+      } catch (e) {
+        results[i] = { ...results[i]!, status: "error", message: e instanceof Error ? e.message : "Failed" };
+      }
+      setBulkImportResults([...results]);
+    }
+    setBulkImporting(false);
+    qc.invalidateQueries({ queryKey: ["vendor-products"] });
+    qc.invalidateQueries({ queryKey: ["vendor-products-all"] });
+    showToast(`✅ ${successCount} of ${valid.length} products added!`);
+  }, [bulkRows, totalProductCount, maxItems, bulkCat, qc]);
 
   const bulkMut = useMutation({
     mutationFn: () => {
@@ -644,12 +711,35 @@ export default function Products() {
               <p className="text-xs text-amber-700 font-medium">⚠️ Rows missing Name or Price will be skipped. Only {validRows.length} complete rows will be added.</p>
             </div>
           )}
-          <div className="flex gap-3">
-            <button onClick={() => setView("list")} className={BTN_SECONDARY}>Cancel</button>
-            <button onClick={() => bulkMut.mutate()} disabled={bulkMut.isPending || validRows.length === 0 || allDataLoading} className={BTN_PRIMARY}>
-              {allDataLoading ? "Checking limit..." : bulkMut.isPending ? "Adding..." : `➕ Add ${validRows.length} Products`}
-            </button>
-          </div>
+          {bulkImportResults && (
+            <div className="mt-4 space-y-1.5">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Import Progress</p>
+              {bulkImportResults.map((r, i) => (
+                <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm ${r.status === "success" ? "bg-green-50" : r.status === "error" ? "bg-red-50" : "bg-gray-50"}`}>
+                  <span className="text-base flex-shrink-0">
+                    {r.status === "success" ? "✅" : r.status === "error" ? "❌" : <span className="w-4 h-4 border-2 border-orange-400 border-t-transparent rounded-full animate-spin inline-block"/>}
+                  </span>
+                  <span className="flex-1 font-medium text-gray-800 truncate">{r.name}</span>
+                  {r.status === "error" && r.message && <span className="text-xs text-red-500 truncate max-w-[120px]">{r.message}</span>}
+                  {r.status === "success" && <span className="text-xs text-green-600 font-bold">Added</span>}
+                  {r.status === "pending" && <span className="text-xs text-gray-400">Waiting...</span>}
+                </div>
+              ))}
+              {!bulkImporting && (
+                <button onClick={() => { setBulkImportResults(null); setView("list"); setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}]); setBulkCat(""); }} className={`mt-3 ${BTN_PRIMARY}`}>
+                  Done
+                </button>
+              )}
+            </div>
+          )}
+          {!bulkImportResults && (
+            <div className="flex gap-3">
+              <button onClick={() => setView("list")} className={BTN_SECONDARY}>Cancel</button>
+              <button onClick={runBulkImport} disabled={bulkImporting || validRows.length === 0 || allDataLoading} className={BTN_PRIMARY}>
+                {allDataLoading ? "Checking limit..." : bulkImporting ? "Adding..." : `➕ Add ${validRows.length} Products`}
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {Toast}
@@ -694,6 +784,57 @@ export default function Products() {
       </div>
 
       <div className="px-4 py-4 space-y-3 md:px-0 md:py-4">
+        {pendingProductCount > 0 && (
+          <div className="rounded-2xl px-4 py-3 border bg-amber-50 border-amber-200">
+            <div className="flex items-center gap-3">
+              <span className="text-xl flex-shrink-0">⏳</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-amber-800">
+                  {pendingProductCount} product change{pendingProductCount > 1 ? "s" : ""} pending sync
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">Will sync automatically when you reconnect</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {productQueueErrors.length > 0 && (
+          <div className="rounded-2xl border bg-red-50 border-red-200 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-red-100">
+              <span className="text-xl flex-shrink-0">❌</span>
+              <p className="text-sm font-bold text-red-800">
+                {productQueueErrors.length} product change{productQueueErrors.length > 1 ? "s" : ""} failed to sync
+              </p>
+            </div>
+            <div className="divide-y divide-red-100">
+              {productQueueErrors.map(err => (
+                <div key={err.id} className="px-4 py-3 flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-red-700 capitalize">
+                      {err.action} {err.productId ? `(#${err.productId.slice(-6)})` : ""}
+                    </p>
+                    <p className="text-xs text-red-500 mt-0.5 break-words">{err.message}</p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0 mt-0.5">
+                    <button
+                      onClick={() => retryProductQueueItem(err.id)}
+                      className="h-7 px-2.5 text-xs font-bold rounded-lg bg-red-600 text-white hover:bg-red-700 active:scale-95 transition-all"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      onClick={() => dismissProductQueueError(err.id)}
+                      className="h-7 px-2.5 text-xs font-bold rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 active:scale-95 transition-all"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {lowStock.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-3">
             <span className="text-xl">⚠️</span>
