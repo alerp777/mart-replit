@@ -194,11 +194,11 @@ export default function Products() {
     mutationFn: () => {
       if (!isOnline) {
         const payload = { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined, videoUrl: form.videoUrl || undefined, tags: tagsFromForm(form.tags), isHidden: form.isHidden };
-        const storageErr = enqueueProductAction("create", payload as Record<string, unknown>);
-        if (storageErr) { showToast("❌ " + storageErr); return Promise.resolve(null); }
+        const storageMsg = enqueueProductAction("create", payload as Record<string, unknown>);
+        if (storageMsg && !storageMsg.startsWith("warn:")) { showToast("❌ " + storageMsg); return Promise.resolve(null); }
         setShowAdd(false);
         setForm({ ...EMPTY });
-        showToast("📥 Saved offline — will sync when connected");
+        showToast(storageMsg ? storageMsg.slice(5) : "📥 Saved offline — will sync when connected");
         return Promise.resolve(null);
       }
       if (totalProductCount === null) throw new Error("Cannot verify product count — please wait and try again.");
@@ -216,11 +216,11 @@ export default function Products() {
     mutationFn: () => {
       if (!isOnline) {
         const payload = { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden };
-        const storageErr = enqueueProductAction("update", payload as Record<string, unknown>, editProd.id);
-        if (storageErr) { showToast("❌ " + storageErr); return Promise.resolve(null); }
+        const storageMsg = enqueueProductAction("update", payload as Record<string, unknown>, editProd.id);
+        if (storageMsg && !storageMsg.startsWith("warn:")) { showToast("❌ " + storageMsg); return Promise.resolve(null); }
         setEditProd(null);
         setShowAdd(false);
-        showToast("📥 Saved offline — will sync when connected");
+        showToast(storageMsg ? storageMsg.slice(5) : "📥 Saved offline — will sync when connected");
         return Promise.resolve(null);
       }
       return api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null, videoUrl: form.videoUrl || null, tags: tagsFromForm(form.tags), isHidden: form.isHidden });

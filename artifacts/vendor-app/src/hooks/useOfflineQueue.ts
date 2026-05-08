@@ -92,20 +92,26 @@ function saveProductFailures(f: ProductQueueError[]): void {
 
 /**
  * Strip embedded base64 image data from a product payload before queueing.
- * Any field whose value is a data: URI is replaced with an empty string so
- * the vendor knows to re-upload the image after reconnecting. Plain https://
- * URLs are kept as-is.
+ * Any field whose value is a data: URI is omitted entirely so it is not
+ * replayed as an empty string (which would wipe the existing image server-side).
+ * Plain https:// URLs are kept as-is.
+ * Returns the sanitized payload and a boolean indicating whether any fields
+ * were stripped.
  */
-function sanitizePayloadForStorage(payload: Record<string, unknown>): Record<string, unknown> {
+function sanitizePayloadForStorage(payload: Record<string, unknown>): {
+  sanitized: Record<string, unknown>;
+  hadBase64: boolean;
+} {
   const sanitized: Record<string, unknown> = {};
+  let hadBase64 = false;
   for (const [key, value] of Object.entries(payload)) {
     if (typeof value === "string" && value.startsWith("data:")) {
-      sanitized[key] = "";
+      hadBase64 = true;
     } else {
       sanitized[key] = value;
     }
   }
-  return sanitized;
+  return { sanitized, hadBase64 };
 }
 
 function sleep(ms: number) {
@@ -253,9 +259,9 @@ export function useOfflineQueue() {
   /**
    * Enqueue a product create/update for offline replay.
    *
-   * Returns null on success, or an error message string when the item
-   * could not be persisted (storage full, oversized payload, etc.).
-   * The caller is responsible for surfacing the error to the vendor.
+   * Returns null on success, an error string on failure (storage full, etc.),
+   * or a "warn:…" string when the item was saved but the vendor should be
+   * notified (e.g. image stripped, entry oversized). The caller surfaces all.
    */
   const enqueueProductAction = useCallback((
     action: "create" | "update",
@@ -264,7 +270,7 @@ export function useOfflineQueue() {
   ): string | null => {
     if (isOnline) return null;
 
-    const sanitizedPayload = sanitizePayloadForStorage(payload);
+    const { sanitized: sanitizedPayload, hadBase64 } = sanitizePayloadForStorage(payload);
 
     const item: QueuedProductAction = {
       id: `product_${action}_${Date.now()}`,
@@ -278,14 +284,6 @@ export function useOfflineQueue() {
     const serialized = JSON.stringify(item);
     const byteSize = new TextEncoder().encode(serialized).length;
 
-    if (byteSize > ENTRY_SIZE_WARN_BYTES) {
-      console.warn(
-        `[offlineQueue] Product queue entry is ${Math.round(byteSize / 1024)} KB — ` +
-        "larger than the recommended 50 KB limit. Base64 image data has been stripped; " +
-        "the image will need to be re-uploaded after reconnecting."
-      );
-    }
-
     const queue = loadProductQueue();
     queue.push(item);
     const saveError = saveProductQueue(queue);
@@ -295,6 +293,15 @@ export function useOfflineQueue() {
     }
 
     setPendingProductCount(queue.length);
+
+    if (hadBase64) {
+      return "warn:📥 Saved offline (image stripped — re-upload the photo when back online)";
+    }
+
+    if (byteSize > ENTRY_SIZE_WARN_BYTES) {
+      return `warn:📥 Saved offline — this change is large (${Math.round(byteSize / 1024)} KB). Sync soon to avoid storage issues.`;
+    }
+
     return null;
   }, [isOnline]);
 
